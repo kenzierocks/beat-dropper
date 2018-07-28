@@ -24,6 +24,7 @@
  */
 package net.octyl.beatdropper.droppers;
 
+import java.util.Random;
 import java.util.SortedSet;
 
 import com.google.auto.service.AutoService;
@@ -36,39 +37,44 @@ import net.octyl.beatdropper.SampleSelection;
 /**
  * Drops a specific percentage of the end of a beat.
  */
-public class PercentageBeatDropper implements BeatDropper {
+public class RandomBeatDropper implements BeatDropper {
 
     @AutoService(BeatDropperFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> bpm;
         private final ArgumentAcceptingOptionSpec<Double> percentage;
+        private final ArgumentAcceptingOptionSpec<String> seed;
 
         public Factory() {
-            super("percentage");
+            super("random");
             this.bpm = SharedBeatDropOptions.bpm(getParser());
-            this.percentage = SharedBeatDropOptions.percentage(getParser(), "Percentage of the beat to drop.");
+            this.percentage = SharedBeatDropOptions.percentage(getParser(), "Percentage of the beats to drop.");
+            this.seed = opt("seed", "Random seed. Hashcode will be taken.");
         }
 
         @Override
         public BeatDropper create(OptionSet options) {
-            return new PercentageBeatDropper(bpm.value(options), percentage.value(options) / 100.0);
+            return new RandomBeatDropper(bpm.value(options), percentage.value(options) / 100.0, seed.value(options));
         }
 
     }
 
+    private final Random rng = new Random();
     private final int bpm;
     private final double percentage;
+    private final String seed;
 
-    private PercentageBeatDropper(int bpm, double percentage) {
+    private RandomBeatDropper(int bpm, double percentage, String seed) {
         this.bpm = bpm;
         this.percentage = percentage;
+        rng.setSeed(seed.hashCode());
+        this.seed = seed;
     }
 
     @Override
     public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        // samples here represent one beat
-        return ImmutableSortedSet.of(SampleSelection.make(0, (int) (percentage * samplesLength)));
+        return ImmutableSortedSet.of(SampleSelection.make(0, rng.nextBoolean() ? 0 : samplesLength));
     }
 
     @Override
@@ -78,7 +84,7 @@ public class PercentageBeatDropper implements BeatDropper {
 
     @Override
     public String describeModification() {
-        return "Percentage[bpm=" + bpm + "," + (percentage * 100) + "%]";
+        return "Random[bpm=" + bpm + "," + (percentage * 100) + "%,seed=" + seed + "]";
     }
 
 }

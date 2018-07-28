@@ -31,6 +31,8 @@ import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.SortedSet;
 
@@ -43,9 +45,20 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
 
+import net.bramp.ffmpeg.FFmpegExecutor;
+import net.bramp.ffmpeg.builder.FFmpegBuilder;
 import net.octyl.beatdropper.droppers.BeatDropper;
 
 public class DropProcessor {
+
+    private static final FFmpegExecutor ffExecutor;
+    static {
+        try {
+            ffExecutor = new FFmpegExecutor();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
     private final ByteArrayDataOutput output = ByteStreams.newDataOutput();
     private final Path source;
@@ -86,21 +99,32 @@ public class DropProcessor {
     }
 
     private String renameFile(String fileName) {
-        String modStr = " [" + dropper.describeModification() + "].wav";
+        String modStr = " [" + dropper.describeModification() + "]";
         int lastDot = fileName.lastIndexOf('.');
         if (lastDot == -1) {
             return fileName + modStr;
         }
-        return fileName.substring(0, lastDot) + modStr;
+        return fileName.substring(0, lastDot) + modStr + fileName.substring(lastDot);
     }
 
     private void writeToFile(float sampleRate, Path target) throws IOException {
-        AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true, true);
-        AudioInputStream audio = new AudioInputStream(
-                new ByteArrayInputStream(output.toByteArray()),
-                fmt,
-                AudioSystem.NOT_SPECIFIED);
-        AudioSystem.write(audio, Type.WAVE, target.toFile());
+        Path temporaryFile = Files.createTempFile("beat-dropper", ".wav");
+        try {
+            AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true, true);
+            AudioInputStream audio = new AudioInputStream(
+                    new ByteArrayInputStream(output.toByteArray()),
+                    fmt,
+                    AudioSystem.NOT_SPECIFIED);
+            AudioSystem.write(audio, Type.WAVE, temporaryFile.toFile());
+            ffExecutor.createJob(new FFmpegBuilder()
+                    .addInput(temporaryFile.toString())
+                    .overrideOutputFiles(true)
+                    .addOutput(target.toString())
+                    .done())
+                    .run();
+        } finally {
+            Files.delete(temporaryFile);
+        }
     }
 
     private void processAudioStream(AudioInputStream stream, int channels, int frameSize) throws IOException {

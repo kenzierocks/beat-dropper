@@ -34,6 +34,7 @@ dependencies {
     implementation group: 'com.flowpowered', name: 'flow-math', version: '1.0.3'
 
 	implementation group: 'com.googlecode.soundlibs', name: 'mp3spi', version: '1.9.5.4'
+    implementation group: 'net.bramp.ffmpeg', name: 'ffmpeg', version: '0.6.2'
 
     implementation group: 'org.bytedeco.javacpp-presets', name: 'fftw-platform', version: '3.3.5-1.3'
 

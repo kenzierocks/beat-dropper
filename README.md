@@ -26,3 +26,7 @@ $ beat-dropper identity [your file]
 You should then see a new file appear. If, for example, you gave it `All Star.mp3`, 
 you would have a file named `All Star [Identity].wav`. This name includes info on what was done
 to the file in the brackets.
+
+### Build and Run
+There's no releases yet, or any planned, so to get up and running simply type `./gradlew installDist` at your terminal.
+Then you can run `./build/install/beat-dropper/bin/beat-dropper` in place of `beat-dropper` in the above commands.

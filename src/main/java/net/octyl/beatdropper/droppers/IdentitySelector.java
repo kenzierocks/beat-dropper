@@ -24,15 +24,49 @@
  */
 package net.octyl.beatdropper.droppers;
 
-import joptsimple.OptionParser;
+import java.util.SortedSet;
+
+import com.google.auto.service.AutoService;
+import com.google.common.collect.ImmutableSortedSet;
+
 import joptsimple.OptionSet;
+import net.octyl.beatdropper.SampleSelection;
 
-public interface BeatDropperFactory {
+/**
+ * Drops no beats. Chill af.
+ */
+public class IdentitySelector implements SampleSelector {
 
-    String getId();
+    @AutoService(SampleSelectorFactory.class)
+    public static final class Factory extends FactoryBase {
 
-    OptionParser getParser();
+        public Factory() {
+            super("identity");
+        }
 
-    BeatDropper create(OptionSet options);
+        @Override
+        public SampleSelector create(OptionSet options) {
+            return new IdentitySelector();
+        }
+
+    }
+
+    private IdentitySelector() {
+    }
+
+    @Override
+    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
+        return ImmutableSortedSet.of(SampleSelection.make(0, samplesLength));
+    }
+
+    @Override
+    public long requestedTimeLength() {
+        return 8192;
+    }
+
+    @Override
+    public String describeModification() {
+        return "Identity";
+    }
 
 }

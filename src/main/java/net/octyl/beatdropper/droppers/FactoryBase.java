@@ -29,7 +29,7 @@ import com.google.common.collect.ImmutableList;
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionParser;
 
-public abstract class FactoryBase implements BeatDropperFactory {
+public abstract class FactoryBase implements SampleSelectorFactory {
 
     private final OptionParser parser = new OptionParser();
     private final String id;

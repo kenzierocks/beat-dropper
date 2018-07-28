@@ -47,9 +47,9 @@ import com.google.common.io.ByteStreams;
 
 import net.bramp.ffmpeg.FFmpegExecutor;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
-import net.octyl.beatdropper.droppers.BeatDropper;
+import net.octyl.beatdropper.droppers.SampleSelector;
 
-public class DropProcessor {
+public class SelectionProcessor {
 
     private static final FFmpegExecutor ffExecutor;
     static {
@@ -62,11 +62,11 @@ public class DropProcessor {
 
     private final ByteArrayDataOutput output = ByteStreams.newDataOutput();
     private final Path source;
-    private final BeatDropper dropper;
+    private final SampleSelector selector;
 
-    public DropProcessor(Path source, BeatDropper dropper) {
+    public SelectionProcessor(Path source, SampleSelector selector) {
         this.source = checkNotNull(source, "source");
-        this.dropper = checkNotNull(dropper, "dropper");
+        this.selector = checkNotNull(selector, "selector");
     }
 
     public void process() throws IOException, UnsupportedAudioFileException {
@@ -99,7 +99,7 @@ public class DropProcessor {
     }
 
     private String renameFile(String fileName) {
-        String modStr = " [" + dropper.describeModification() + "]";
+        String modStr = " [" + selector.describeModification() + "]";
         int lastDot = fileName.lastIndexOf('.');
         if (lastDot == -1) {
             return fileName + modStr;
@@ -129,7 +129,7 @@ public class DropProcessor {
 
     private void processAudioStream(AudioInputStream stream, int channels, int frameSize) throws IOException {
         DataInputStream dis = new DataInputStream(new BufferedInputStream(stream));
-        int sampleAmount = (int) ((dropper.requestedTimeLength() * stream.getFormat().getFrameRate()) / 1000);
+        int sampleAmount = (int) ((selector.requestedTimeLength() * stream.getFormat().getFrameRate()) / 1000);
         short[] left = new short[sampleAmount];
         short[] right = new short[sampleAmount];
         boolean reading = true;
@@ -160,7 +160,7 @@ public class DropProcessor {
                 }
             }
 
-            SortedSet<SampleSelection> ranges = dropper.selectSamples(left.length);
+            SortedSet<SampleSelection> ranges = selector.selectSamples(left.length);
             short[] cutLeft = extractSelection(left, ranges);
             short[] cutRight = extractSelection(right, ranges);
             for (int i = 0; i < cutLeft.length; i++) {

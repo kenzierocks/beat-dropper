@@ -39,9 +39,9 @@ import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
 import joptsimple.util.PathConverter;
 import joptsimple.util.PathProperties;
-import net.octyl.beatdropper.droppers.BeatDropper;
-import net.octyl.beatdropper.droppers.BeatDropperFactories;
-import net.octyl.beatdropper.droppers.BeatDropperFactory;
+import net.octyl.beatdropper.droppers.SampleSelector;
+import net.octyl.beatdropper.droppers.SampleSelectorFactories;
+import net.octyl.beatdropper.droppers.SampleSelectorFactory;
 
 public class BeatDrop {
 
@@ -57,7 +57,7 @@ public class BeatDrop {
 
         String dropperFactoryId = args[0];
 
-        BeatDropperFactory factory = BeatDropperFactories.getById(dropperFactoryId);
+        SampleSelectorFactory factory = SampleSelectorFactories.getById(dropperFactoryId);
 
         OptionParser parser = factory.getParser();
         NonOptionArgumentSpec<Path> sourceOpt = addSourceOpt(parser);
@@ -73,17 +73,17 @@ public class BeatDrop {
         }
 
         Path source = sourceOpt.value(options);
-        BeatDropper dropper = factory.create(options);
+        SampleSelector selector = factory.create(options);
 
-        executeBeatDropping(source, dropper);
+        executeBeatDropping(source, selector);
     }
 
     private static boolean helpOptionPresent(OptionSet options) {
         return options.specs().stream().anyMatch(OptionSpec::isForHelp);
     }
 
-    private static void executeBeatDropping(Path source, BeatDropper dropper) {
-        DropProcessor processor = new DropProcessor(source, dropper);
+    private static void executeBeatDropping(Path source, SampleSelector selector) {
+        SelectionProcessor processor = new SelectionProcessor(source, selector);
         try {
             processor.process();
         } catch (IOException e) {
@@ -100,7 +100,7 @@ public class BeatDrop {
     }
 
     private static void printHelp() {
-        String formattedDroppers = BeatDropperFactories.formatAvailableForCli();
+        String formattedDroppers = SampleSelectorFactories.formatAvailableForCli();
         System.err.println(
                 "usage: beat-dropper <dropper> [dropper options] <file>\n\n"
                         + "For dropper options, see beat-dropper [dropper] --help.\n\n"

@@ -24,25 +24,20 @@
  */
 package net.octyl.beatdropper.droppers;
 
-import java.util.SortedSet;
+import java.util.concurrent.TimeUnit;
 
-import net.octyl.beatdropper.SampleSelection;
+public class SampleSelectionUtils {
 
-public interface BeatDropper {
-
-    /**
-     * Select the samples that should be kept.
-     */
-    SortedSet<SampleSelection> selectSamples(int samplesLength);
-
-    /**
-     * The amount of time, in milliseconds, that the samples provided to
-     * {@link #selectSamples(int)} should represent.
-     * 
-     * @return the number of milliseconds that the samples should represent
-     */
-    long requestedTimeLength();
-
-    String describeModification();
+    public static long requestedTimeForOneBeat(int bpm) {
+        // have: beats per minute
+        // want: one beat's worth of samples
+        // want: time for one beat
+        // want: millis per beat
+        // -- get: minutes per beat
+        double minPerBeat = 1.0 / bpm;
+        // -- get: mills per beat
+        long millisPerBeat = (long) (TimeUnit.MINUTES.toMillis(1) * minPerBeat);
+        return millisPerBeat;
+    }
 
 }

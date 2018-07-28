@@ -24,49 +24,36 @@
  */
 package net.octyl.beatdropper.droppers;
 
-import java.util.SortedSet;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 
-import com.google.auto.service.AutoService;
-import com.google.common.collect.ImmutableSortedSet;
+import java.util.Comparator;
+import java.util.ServiceLoader;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-import joptsimple.OptionSet;
-import net.octyl.beatdropper.SampleSelection;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Streams;
 
-/**
- * Drops no beats. Chill af.
- */
-public class IdentityBeatDropper implements BeatDropper {
+public class SampleSelectorFactories {
 
-    @AutoService(BeatDropperFactory.class)
-    public static final class Factory extends FactoryBase {
+    private static final ImmutableMap<String, SampleSelectorFactory> byId;
 
-        public Factory() {
-            super("identity");
-        }
-
-        @Override
-        public BeatDropper create(OptionSet options) {
-            return new IdentityBeatDropper();
-        }
-
+    static {
+        byId = Streams.stream(ServiceLoader.load(SampleSelectorFactory.class))
+                .sorted(Comparator.comparing(SampleSelectorFactory::getId))
+                .collect(toImmutableMap(SampleSelectorFactory::getId, Function.identity()));
     }
 
-    private IdentityBeatDropper() {
+    public static SampleSelectorFactory getById(String id) {
+        SampleSelectorFactory factory = byId.get(id);
+        checkArgument(factory != null, "No factory by the ID '%s'", id);
+        return factory;
     }
 
-    @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        return ImmutableSortedSet.of(SampleSelection.make(0, samplesLength));
-    }
-
-    @Override
-    public long requestedTimeLength() {
-        return 8192;
-    }
-
-    @Override
-    public String describeModification() {
-        return "Identity";
+    public static String formatAvailableForCli() {
+        return byId.keySet().stream()
+                .collect(Collectors.joining("\n\t", "\t", ""));
     }
 
 }

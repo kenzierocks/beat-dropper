@@ -35,11 +35,11 @@ import joptsimple.OptionSet;
 import net.octyl.beatdropper.SampleSelection;
 
 /**
- * Drops a specific percentage of the end of a beat.
+ * Drops a specific percentage of the beats, randomly.
  */
-public class RandomBeatDropper implements BeatDropper {
+public class RandomBeatDropper implements SampleSelector {
 
-    @AutoService(BeatDropperFactory.class)
+    @AutoService(SampleSelectorFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> bpm;
@@ -48,13 +48,13 @@ public class RandomBeatDropper implements BeatDropper {
 
         public Factory() {
             super("random");
-            this.bpm = SharedBeatDropOptions.bpm(getParser());
-            this.percentage = SharedBeatDropOptions.percentage(getParser(), "Percentage of the beats to drop.");
-            this.seed = opt("seed", "Random seed. Hashcode will be taken.");
+            this.bpm = SharedOptions.bpm(getParser());
+            this.percentage = SharedOptions.percentage(getParser(), "Percentage of the beats to drop.");
+            this.seed = SharedOptions.seed(getParser());
         }
 
         @Override
-        public BeatDropper create(OptionSet options) {
+        public SampleSelector create(OptionSet options) {
             return new RandomBeatDropper(bpm.value(options), percentage.value(options) / 100.0, seed.value(options));
         }
 
@@ -74,12 +74,13 @@ public class RandomBeatDropper implements BeatDropper {
 
     @Override
     public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        return ImmutableSortedSet.of(SampleSelection.make(0, rng.nextBoolean() ? 0 : samplesLength));
+        boolean drop = rng.nextDouble() < percentage;
+        return ImmutableSortedSet.of(SampleSelection.make(0, drop ? 0 : samplesLength));
     }
 
     @Override
     public long requestedTimeLength() {
-        return BeatDropUtils.requestedTimeForOneBeat(bpm);
+        return SampleSelectionUtils.requestedTimeForOneBeat(bpm);
     }
 
     @Override

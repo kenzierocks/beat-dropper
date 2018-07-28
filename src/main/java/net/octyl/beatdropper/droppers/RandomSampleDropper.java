@@ -24,6 +24,7 @@
  */
 package net.octyl.beatdropper.droppers;
 
+import java.util.Random;
 import java.util.SortedSet;
 
 import com.google.auto.service.AutoService;
@@ -34,58 +35,57 @@ import joptsimple.OptionSet;
 import net.octyl.beatdropper.SampleSelection;
 
 /**
- * Drops beats according to a simple pattern made of 0 and 1.
- * 
- * For example, to drop every other beat, use "10". To drop every other beat the
- * other way around, use "01".
+ * Drops a specific percentage of all samples, randomly.
  */
-public class PatternBeatDropper implements SampleSelector {
+public class RandomSampleDropper implements SampleSelector {
 
     @AutoService(SampleSelectorFactory.class)
     public static final class Factory extends FactoryBase {
 
-        private final ArgumentAcceptingOptionSpec<Integer> bpm;
-        private final ArgumentAcceptingOptionSpec<String> pattern;
+        private final ArgumentAcceptingOptionSpec<Integer> sampleSize;
+        private final ArgumentAcceptingOptionSpec<Double> percentage;
+        private final ArgumentAcceptingOptionSpec<String> seed;
 
         public Factory() {
-            super("pattern");
-            this.bpm = SharedOptions.bpm(getParser());
-            this.pattern = opt("pattern", "Pattern of 1s and 0s for which beats to use.");
+            super("random-sample");
+            this.sampleSize = SharedOptions.sampleSize(getParser());
+            this.percentage = SharedOptions.percentage(getParser(), "Percentage of the samples to drop.");
+            this.seed = SharedOptions.seed(getParser());
         }
 
         @Override
         public SampleSelector create(OptionSet options) {
-            return new PatternBeatDropper(bpm.value(options), pattern.value(options));
+            return new RandomSampleDropper(sampleSize.value(options), percentage.value(options) / 100.0, seed.value(options));
         }
 
     }
 
-    private final int bpm;
-    private final String pattern;
-    private int counter = 0;
+    private final Random rng = new Random();
+    private final int sampleSize;
+    private final double percentage;
+    private final String seed;
 
-    private PatternBeatDropper(int bpm, String pattern) {
-        this.bpm = bpm;
-        this.pattern = pattern;
+    private RandomSampleDropper(int sampleSize, double percentage, String seed) {
+        this.sampleSize = sampleSize;
+        this.percentage = percentage;
+        rng.setSeed(seed.hashCode());
+        this.seed = seed;
     }
 
     @Override
     public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        // samples here represent one beat
-        boolean drop = pattern.charAt(counter % pattern.length()) == '0';
-        counter++;
-
+        boolean drop = rng.nextDouble() < percentage;
         return ImmutableSortedSet.of(SampleSelection.make(0, drop ? 0 : samplesLength));
     }
 
     @Override
     public long requestedTimeLength() {
-        return SampleSelectionUtils.requestedTimeForOneBeat(bpm);
+        return sampleSize;
     }
 
     @Override
     public String describeModification() {
-        return "Pattern[bpm=" + bpm + ",pattern=" + pattern + "]";
+        return "RandomSample[sampleSize=" + sampleSize + "," + (percentage * 100) + "%,seed=" + seed + "]";
     }
 
 }

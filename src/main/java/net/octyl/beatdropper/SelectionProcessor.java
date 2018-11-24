@@ -35,7 +35,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.SortedSet;
+import java.util.Collection;
 
 import javax.sound.sampled.AudioFileFormat.Type;
 import javax.sound.sampled.AudioFormat;
@@ -161,7 +161,7 @@ public class SelectionProcessor {
                 }
             }
 
-            SortedSet<SampleSelection> ranges = selector.selectSamples(left.length);
+            Collection<SampleSelection> ranges = selector.selectSamples(left.length);
             short[] cutLeft = extractSelection(left, ranges);
             short[] cutRight = extractSelection(right, ranges);
             for (int i = 0; i < cutLeft.length; i++) {
@@ -171,17 +171,16 @@ public class SelectionProcessor {
         }
     }
 
-    private short[] extractSelection(short[] buffer, SortedSet<SampleSelection> ranges) {
+    private short[] extractSelection(short[] buffer, Collection<SampleSelection> ranges) {
         int sizeOfAllSelections = ranges.stream().mapToInt(sel -> sel.length()).sum();
-        if (sizeOfAllSelections == buffer.length) {
-            return buffer;
-        }
-        short[] sel = new short[sizeOfAllSelections];
+        short[] selectedBuffer = new short[sizeOfAllSelections];
         int index = 0;
         for (SampleSelection range : ranges) {
-            System.arraycopy(buffer, range.lowBound(), sel, index, range.length());
+            // copy from buffer[lowBound:highBound] to
+            // selectedBuffer[index:index+length]
+            System.arraycopy(buffer, range.lowBound(), selectedBuffer, index, range.length());
             index += range.length();
         }
-        return sel;
+        return selectedBuffer;
     }
 }

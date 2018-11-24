@@ -35,11 +35,11 @@ import joptsimple.ValueConverter;
 
 public class SharedOptions {
 
-    private static final class PositieValueConverter implements ValueConverter<Integer> {
+    private static final class PositiveValueConverter implements ValueConverter<Integer> {
 
         private final String desc;
 
-        public PositieValueConverter(String desc) {
+        public PositiveValueConverter(String desc) {
             this.desc = desc;
         }
 
@@ -68,13 +68,19 @@ public class SharedOptions {
     public static ArgumentAcceptingOptionSpec<Integer> bpm(OptionParser parser) {
         return parser.acceptsAll(ImmutableList.of("bpm"), "BPM of the song.")
                 .withRequiredArg()
-                .withValuesConvertedBy(new PositieValueConverter("BPM"));
+                .withValuesConvertedBy(new PositiveValueConverter("BPM"));
     }
 
     public static ArgumentAcceptingOptionSpec<Integer> sampleSize(OptionParser parser) {
         return parser.acceptsAll(ImmutableList.of("sample-size"), "Size of each sample to consider.")
                 .withRequiredArg()
-                .withValuesConvertedBy(new PositieValueConverter("Sample size"));
+                .withValuesConvertedBy(new PositiveValueConverter("Sample size"));
+    }
+
+    public static ArgumentAcceptingOptionSpec<Integer> optInt(OptionParser parser, String option, String desc) {
+        return parser.acceptsAll(ImmutableList.of(option), desc)
+                .withRequiredArg()
+                .withValuesConvertedBy(new PositiveValueConverter(option));
     }
 
     private enum PercentageValueConverter implements ValueConverter<Double> {

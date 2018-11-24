@@ -25,7 +25,7 @@
 
 package net.octyl.beatdropper.droppers;
 
-import java.util.SortedSet;
+import java.util.Collection;
 
 import net.octyl.beatdropper.SampleSelection;
 
@@ -34,7 +34,7 @@ public interface SampleSelector {
     /**
      * Select the samples that should be kept.
      */
-    SortedSet<SampleSelection> selectSamples(int samplesLength);
+    Collection<SampleSelection> selectSamples(int samplesLength);
 
     /**
      * The amount of time, in milliseconds, that the samples provided to

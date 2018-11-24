@@ -35,9 +35,9 @@ public class SampleSelectionUtils {
         // want: time for one beat
         // want: millis per beat
         // -- get: minutes per beat
-        double minPerBeat = 1.0 / bpm;
-        // -- get: mills per beat
-        long millisPerBeat = (long) (TimeUnit.MINUTES.toMillis(1) * minPerBeat);
+        // double minPerBeat = 1.0 / bpm;
+        // -- get: mills per beat (fix multiplication for accuracy)
+        long millisPerBeat = (long) ((TimeUnit.MINUTES.toMillis(1) * 1.0) / bpm);
         return millisPerBeat;
     }
 

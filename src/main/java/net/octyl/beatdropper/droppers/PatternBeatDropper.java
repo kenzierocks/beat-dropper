@@ -40,9 +40,9 @@ import net.octyl.beatdropper.SampleSelection;
  * For example, to drop every other beat, use "10". To drop every other beat the
  * other way around, use "01".
  */
-public class PatternBeatDropper implements SampleSelector {
+public class PatternBeatDropper extends SampleSelector {
 
-    @AutoService(SampleSelectorFactory.class)
+    @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> bpm;
@@ -55,7 +55,7 @@ public class PatternBeatDropper implements SampleSelector {
         }
 
         @Override
-        public SampleSelector create(OptionSet options) {
+        public SampleModifier create(OptionSet options) {
             return new PatternBeatDropper(bpm.value(options), pattern.value(options));
         }
 

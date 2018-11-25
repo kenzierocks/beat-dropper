@@ -25,36 +25,21 @@
 
 package net.octyl.beatdropper.droppers;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.collect.ImmutableMap.toImmutableMap;
+public interface SampleModifier {
 
-import java.util.Comparator;
-import java.util.ServiceLoader;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+    /**
+     * Modify a sample buffer.
+     */
+    short[] modifySamples(short[] samples);
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Streams;
+    /**
+     * The amount of time, in milliseconds, that the samples provided to
+     * {@link #modifySamples(short[])} should represent.
+     *
+     * @return the number of milliseconds that the samples should represent
+     */
+    long requestedTimeLength();
 
-public class SampleSelectorFactories {
-
-    private static final ImmutableMap<String, SampleSelectorFactory> byId;
-
-    static {
-        byId = Streams.stream(ServiceLoader.load(SampleSelectorFactory.class))
-                .sorted(Comparator.comparing(SampleSelectorFactory::getId))
-                .collect(toImmutableMap(SampleSelectorFactory::getId, Function.identity()));
-    }
-
-    public static SampleSelectorFactory getById(String id) {
-        SampleSelectorFactory factory = byId.get(id);
-        checkArgument(factory != null, "No factory by the ID '%s'", id);
-        return factory;
-    }
-
-    public static String formatAvailableForCli() {
-        return byId.keySet().stream()
-                .collect(Collectors.joining("\n\t", "\t", ""));
-    }
+    String describeModification();
 
 }

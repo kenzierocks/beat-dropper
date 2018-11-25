@@ -26,6 +26,13 @@
 package net.octyl.beatdropper.droppers;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
+
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.Streams;
+
+import net.octyl.beatdropper.SampleSelection;
 
 public class SampleSelectionUtils {
 
@@ -39,6 +46,31 @@ public class SampleSelectionUtils {
         // -- get: mills per beat (fix multiplication for accuracy)
         long millisPerBeat = (long) ((TimeUnit.MINUTES.toMillis(1) * 1.0) / bpm);
         return millisPerBeat;
+    }
+
+    /**
+     * Generates selections to make `[start, end)` twice as fast.
+     *
+     * @param start
+     *            the start of the range
+     * @param end
+     *            the end of the range
+     * @return the selections to make
+     */
+    public static Stream<SampleSelection> doubleTime(int start, int end) {
+        return Streams.stream(new AbstractIterator<SampleSelection>() {
+
+            private AtomicInteger index = new AtomicInteger(start);
+
+            @Override
+            protected SampleSelection computeNext() {
+                int i = index.getAndAdd(2);
+                if (i >= end) {
+                    return endOfData();
+                }
+                return SampleSelection.make(i, i + 1);
+            }
+        });
     }
 
 }

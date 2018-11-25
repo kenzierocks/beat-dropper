@@ -38,9 +38,9 @@ import net.octyl.beatdropper.SampleSelection;
 /**
  * Drops a specific percentage of the beats, randomly.
  */
-public class RandomBeatDropper implements SampleSelector {
+public class RandomBeatDropper extends SampleSelector {
 
-    @AutoService(SampleSelectorFactory.class)
+    @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> bpm;
@@ -55,7 +55,7 @@ public class RandomBeatDropper implements SampleSelector {
         }
 
         @Override
-        public SampleSelector create(OptionSet options) {
+        public SampleModifier create(OptionSet options) {
             return new RandomBeatDropper(bpm.value(options), percentage.value(options) / 100.0, seed.value(options));
         }
 

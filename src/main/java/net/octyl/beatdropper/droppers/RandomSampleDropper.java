@@ -38,9 +38,9 @@ import net.octyl.beatdropper.SampleSelection;
 /**
  * Drops a specific percentage of all samples, randomly.
  */
-public class RandomSampleDropper implements SampleSelector {
+public class RandomSampleDropper extends SampleSelector {
 
-    @AutoService(SampleSelectorFactory.class)
+    @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> sampleSize;
@@ -55,7 +55,7 @@ public class RandomSampleDropper implements SampleSelector {
         }
 
         @Override
-        public SampleSelector create(OptionSet options) {
+        public SampleModifier create(OptionSet options) {
             return new RandomSampleDropper(sampleSize.value(options), percentage.value(options) / 100.0, seed.value(options));
         }
 

@@ -29,21 +29,25 @@ import java.util.Collection;
 
 import net.octyl.beatdropper.SampleSelection;
 
-public interface SampleSelector {
+public abstract class SampleSelector implements SampleModifier {
 
-    /**
-     * Select the samples that should be kept.
-     */
-    Collection<SampleSelection> selectSamples(int samplesLength);
+    @Override
+    public short[] modifySamples(short[] samples) {
+        return extractSelection(samples, selectSamples(samples.length));
+    }
 
-    /**
-     * The amount of time, in milliseconds, that the samples provided to
-     * {@link #selectSamples(int)} should represent.
-     * 
-     * @return the number of milliseconds that the samples should represent
-     */
-    long requestedTimeLength();
+    private short[] extractSelection(short[] buffer, Collection<SampleSelection> ranges) {
+        int sizeOfAllSelections = ranges.stream().mapToInt(sel -> sel.length()).sum();
+        short[] selectedBuffer = new short[sizeOfAllSelections];
+        int index = 0;
+        for (SampleSelection range : ranges) {
+            // copy from buffer[lowBound:highBound] to
+            // selectedBuffer[index:index+length]
+            System.arraycopy(buffer, range.lowBound(), selectedBuffer, index, range.length());
+            index += range.length();
+        }
+        return selectedBuffer;
+    }
 
-    String describeModification();
-
+    protected abstract Collection<SampleSelection> selectSamples(int samplesLength);
 }

@@ -25,49 +25,73 @@
 
 package net.octyl.beatdropper.droppers;
 
-import java.util.SortedSet;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+
+import java.util.Collection;
 
 import com.google.auto.service.AutoService;
-import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.ImmutableList;
 
+import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionSet;
 import net.octyl.beatdropper.SampleSelection;
 
 /**
- * Drops no beats. Chill af.
+ * Doubles the time of selected beats in the pattern.
+ *
+ * @see PatternBeatDropper
  */
-public class IdentitySelector extends SampleSelector {
+public class WaltizifierV1 extends SampleSelector {
 
     @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
 
+        private final ArgumentAcceptingOptionSpec<Integer> bpm;
+        private final ArgumentAcceptingOptionSpec<String> pattern;
+
         public Factory() {
-            super("identity");
+            super("waltz-v1");
+            this.bpm = SharedOptions.bpm(getParser());
+            this.pattern = opt("pattern", "Pattern of 1s and 0s for which beats to speed up.");
         }
 
         @Override
         public SampleModifier create(OptionSet options) {
-            return new IdentitySelector();
+            return new WaltizifierV1(bpm.value(options), pattern.value(options));
         }
 
     }
 
-    private IdentitySelector() {
+    private final int bpm;
+    private final String pattern;
+    private int counter = 0;
+
+    private WaltizifierV1(int bpm, String pattern) {
+        this.bpm = bpm;
+        this.pattern = pattern;
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        return ImmutableSortedSet.of(SampleSelection.make(0, samplesLength));
+    public Collection<SampleSelection> selectSamples(int samplesLength) {
+        // samples here represent one beat
+        boolean speed = pattern.charAt(counter % pattern.length()) == '1';
+        counter++;
+
+        if (speed) {
+            return SampleSelectionUtils.doubleTime(0, samplesLength).collect(toImmutableList());
+        } else {
+            return ImmutableList.of(SampleSelection.make(0, samplesLength));
+        }
     }
 
     @Override
     public long requestedTimeLength() {
-        return 8192;
+        return SampleSelectionUtils.requestedTimeForOneBeat(bpm);
     }
 
     @Override
     public String describeModification() {
-        return "Identity";
+        return "WaltzV1[bpm=" + bpm + ",pattern=" + pattern + "]";
     }
 
 }

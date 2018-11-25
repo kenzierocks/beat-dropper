@@ -40,9 +40,9 @@ import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
 import joptsimple.util.PathConverter;
 import joptsimple.util.PathProperties;
-import net.octyl.beatdropper.droppers.SampleSelector;
-import net.octyl.beatdropper.droppers.SampleSelectorFactories;
-import net.octyl.beatdropper.droppers.SampleSelectorFactory;
+import net.octyl.beatdropper.droppers.SampleModifier;
+import net.octyl.beatdropper.droppers.SampleModifierFactories;
+import net.octyl.beatdropper.droppers.SampleModifierFactory;
 
 public class BeatDrop {
 
@@ -58,7 +58,7 @@ public class BeatDrop {
 
         String dropperFactoryId = args[0];
 
-        SampleSelectorFactory factory = SampleSelectorFactories.getById(dropperFactoryId);
+        SampleModifierFactory factory = SampleModifierFactories.getById(dropperFactoryId);
 
         OptionParser parser = factory.getParser();
         NonOptionArgumentSpec<Path> sourceOpt = addSourceOpt(parser);
@@ -74,7 +74,7 @@ public class BeatDrop {
         }
 
         Path source = sourceOpt.value(options);
-        SampleSelector selector = factory.create(options);
+        SampleModifier selector = factory.create(options);
 
         executeBeatDropping(source, selector);
     }
@@ -83,7 +83,7 @@ public class BeatDrop {
         return options.specs().stream().anyMatch(OptionSpec::isForHelp);
     }
 
-    private static void executeBeatDropping(Path source, SampleSelector selector) {
+    private static void executeBeatDropping(Path source, SampleModifier selector) {
         SelectionProcessor processor = new SelectionProcessor(source, selector);
         try {
             processor.process();
@@ -101,7 +101,7 @@ public class BeatDrop {
     }
 
     private static void printHelp() {
-        String formattedDroppers = SampleSelectorFactories.formatAvailableForCli();
+        String formattedDroppers = SampleModifierFactories.formatAvailableForCli();
         System.err.println(
                 "usage: beat-dropper <dropper> [dropper options] <file>\n\n"
                         + "For dropper options, see beat-dropper [dropper] --help.\n\n"

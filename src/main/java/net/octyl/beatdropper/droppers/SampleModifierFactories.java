@@ -25,15 +25,36 @@
 
 package net.octyl.beatdropper.droppers;
 
-import joptsimple.OptionParser;
-import joptsimple.OptionSet;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 
-public interface SampleSelectorFactory {
+import java.util.Comparator;
+import java.util.ServiceLoader;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-    String getId();
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Streams;
 
-    OptionParser getParser();
+public class SampleModifierFactories {
 
-    SampleSelector create(OptionSet options);
+    private static final ImmutableMap<String, SampleModifierFactory> byId;
+
+    static {
+        byId = Streams.stream(ServiceLoader.load(SampleModifierFactory.class))
+                .sorted(Comparator.comparing(SampleModifierFactory::getId))
+                .collect(toImmutableMap(SampleModifierFactory::getId, Function.identity()));
+    }
+
+    public static SampleModifierFactory getById(String id) {
+        SampleModifierFactory factory = byId.get(id);
+        checkArgument(factory != null, "No factory by the ID '%s'", id);
+        return factory;
+    }
+
+    public static String formatAvailableForCli() {
+        return byId.keySet().stream()
+                .collect(Collectors.joining("\n\t", "\t", ""));
+    }
 
 }

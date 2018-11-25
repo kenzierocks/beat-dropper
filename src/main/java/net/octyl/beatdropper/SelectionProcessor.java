@@ -35,7 +35,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 
 import javax.sound.sampled.AudioFileFormat.Type;
 import javax.sound.sampled.AudioFormat;
@@ -48,7 +47,7 @@ import com.google.common.io.ByteStreams;
 
 import net.bramp.ffmpeg.FFmpegExecutor;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
-import net.octyl.beatdropper.droppers.SampleSelector;
+import net.octyl.beatdropper.droppers.SampleModifier;
 
 public class SelectionProcessor {
 
@@ -63,11 +62,11 @@ public class SelectionProcessor {
 
     private final ByteArrayDataOutput output = ByteStreams.newDataOutput();
     private final Path source;
-    private final SampleSelector selector;
+    private final SampleModifier modifier;
 
-    public SelectionProcessor(Path source, SampleSelector selector) {
+    public SelectionProcessor(Path source, SampleModifier selector) {
         this.source = checkNotNull(source, "source");
-        this.selector = checkNotNull(selector, "selector");
+        this.modifier = checkNotNull(selector, "selector");
     }
 
     public void process() throws IOException, UnsupportedAudioFileException {
@@ -100,7 +99,7 @@ public class SelectionProcessor {
     }
 
     private String renameFile(String fileName) {
-        String modStr = " [" + selector.describeModification() + "]";
+        String modStr = " [" + modifier.describeModification() + "]";
         int lastDot = fileName.lastIndexOf('.');
         if (lastDot == -1) {
             return fileName + modStr;
@@ -130,7 +129,7 @@ public class SelectionProcessor {
 
     private void processAudioStream(AudioInputStream stream, int channels, int frameSize) throws IOException {
         DataInputStream dis = new DataInputStream(new BufferedInputStream(stream));
-        int sampleAmount = (int) ((selector.requestedTimeLength() * stream.getFormat().getFrameRate()) / 1000);
+        int sampleAmount = (int) ((modifier.requestedTimeLength() * stream.getFormat().getFrameRate()) / 1000);
         short[] left = new short[sampleAmount];
         short[] right = new short[sampleAmount];
         boolean reading = true;
@@ -161,26 +160,12 @@ public class SelectionProcessor {
                 }
             }
 
-            Collection<SampleSelection> ranges = selector.selectSamples(left.length);
-            short[] cutLeft = extractSelection(left, ranges);
-            short[] cutRight = extractSelection(right, ranges);
+            short[] cutLeft = modifier.modifySamples(left);
+            short[] cutRight = modifier.modifySamples(right);
             for (int i = 0; i < cutLeft.length; i++) {
                 output.writeShort(cutLeft[i]);
                 output.writeShort(cutRight[i]);
             }
         }
-    }
-
-    private short[] extractSelection(short[] buffer, Collection<SampleSelection> ranges) {
-        int sizeOfAllSelections = ranges.stream().mapToInt(sel -> sel.length()).sum();
-        short[] selectedBuffer = new short[sizeOfAllSelections];
-        int index = 0;
-        for (SampleSelection range : ranges) {
-            // copy from buffer[lowBound:highBound] to
-            // selectedBuffer[index:index+length]
-            System.arraycopy(buffer, range.lowBound(), selectedBuffer, index, range.length());
-            index += range.length();
-        }
-        return selectedBuffer;
     }
 }

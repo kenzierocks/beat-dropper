@@ -42,9 +42,9 @@ import net.octyl.beatdropper.SampleSelection;
 /**
  * Swaps beats in a measure.
  */
-public class BeatSwapper implements SampleSelector {
+public class BeatSwapper extends SampleSelector {
 
-    @AutoService(SampleSelectorFactory.class)
+    @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> bpm;
@@ -59,7 +59,7 @@ public class BeatSwapper implements SampleSelector {
         }
 
         @Override
-        public SampleSelector create(OptionSet options) {
+        public SampleModifier create(OptionSet options) {
             return new BeatSwapper(bpm.value(options), measureSize.value(options), pattern.value(options));
         }
 

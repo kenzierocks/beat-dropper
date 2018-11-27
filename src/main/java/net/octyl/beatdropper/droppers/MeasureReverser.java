@@ -25,75 +25,45 @@
 
 package net.octyl.beatdropper.droppers;
 
-import static com.google.common.collect.ImmutableList.toImmutableList;
-
 import java.util.List;
-import java.util.stream.IntStream;
 
 import com.google.auto.service.AutoService;
-import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Streams;
 
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionSet;
 import net.octyl.beatdropper.SampleSelection;
 
 /**
- * Swaps beats in a measure.
+ * Reverses each measure.
  */
-public class BeatSwapper extends SampleSelector {
+public class MeasureReverser extends SampleSelector {
 
     @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
 
         private final ArgumentAcceptingOptionSpec<Integer> bpm;
         private final ArgumentAcceptingOptionSpec<Integer> measureSize;
-        private final ArgumentAcceptingOptionSpec<String> pattern;
 
         public Factory() {
-            super("swapper");
+            super("reverse-measure");
             this.bpm = SharedOptions.bpm(getParser());
             this.measureSize = SharedOptions.measureSize(getParser());
-            this.pattern = opt("pattern", "Pattern of beats to output, e.g. `1:4:3:2`.");
         }
 
         @Override
         public SampleModifier create(OptionSet options) {
-            return new BeatSwapper(bpm.value(options), measureSize.value(options), pattern.value(options));
+            return new MeasureReverser(bpm.value(options), measureSize.value(options));
         }
 
     }
 
     private final int bpm;
     private final int measureSize;
-    private final String pattern;
-    private final int[] patternIndex;
 
-    private BeatSwapper(int bpm, int measureSize, String pattern) {
+    private MeasureReverser(int bpm, int measureSize) {
         this.bpm = bpm;
         this.measureSize = measureSize;
-        this.pattern = pattern;
-        int[] indexes = patternToIndexes(pattern);
-        if (IntStream.of(indexes).anyMatch(i -> i >= measureSize)) {
-            throw badPattern(pattern);
-        }
-        patternIndex = indexes;
-    }
-
-    private static int[] patternToIndexes(String pattern) {
-        try {
-            return Streams.stream(Splitter.on(':').split(pattern))
-                    .mapToInt(Integer::parseInt)
-                    .map(i -> i - 1)
-                    .toArray();
-        } catch (NumberFormatException e) {
-            throw badPattern(pattern);
-        }
-    }
-
-    private static IllegalArgumentException badPattern(String pattern) {
-        return new IllegalArgumentException("Invalid pattern `" + pattern + "`");
     }
 
     @Override
@@ -101,10 +71,7 @@ public class BeatSwapper extends SampleSelector {
         // samples here represent one measure
         // get the beat selections
         ImmutableList<SampleSelection> byBeat = buildMeasure(samplesLength);
-        // pick selections by pattern
-        return IntStream.of(patternIndex)
-                .mapToObj(byBeat::get)
-                .collect(toImmutableList());
+        return byBeat.reverse();
     }
 
     private ImmutableList<SampleSelection> buildMeasure(int samplesLength) {
@@ -123,7 +90,7 @@ public class BeatSwapper extends SampleSelector {
 
     @Override
     public String describeModification() {
-        return "Swap[bpm=" + bpm + ",msize=" + measureSize + ",pattern=" + pattern + "]";
+        return "ReverseMeasure[bpm=" + bpm + ",msize=" + measureSize + "]";
     }
 
 }

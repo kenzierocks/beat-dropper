@@ -77,6 +77,12 @@ public class SharedOptions {
                 .withValuesConvertedBy(new PositiveValueConverter("Sample size"));
     }
 
+    public static ArgumentAcceptingOptionSpec<Integer> measureSize(OptionParser parser) {
+        return parser.acceptsAll(ImmutableList.of("measure-size"), "Size of a measure in beats.")
+                .withRequiredArg()
+                .withValuesConvertedBy(new PositiveValueConverter("Measure size"));
+    }
+
     public static ArgumentAcceptingOptionSpec<Integer> optInt(OptionParser parser, String option, String desc) {
         return parser.acceptsAll(ImmutableList.of(option), desc)
                 .withRequiredArg()

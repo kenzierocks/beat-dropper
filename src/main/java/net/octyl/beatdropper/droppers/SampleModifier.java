@@ -30,7 +30,7 @@ public interface SampleModifier {
     /**
      * Modify a sample buffer.
      */
-    short[] modifySamples(short[] samples);
+    short[] modifySamples(short[] samples, int batchNumber);
 
     /**
      * The amount of time, in milliseconds, that the samples provided to

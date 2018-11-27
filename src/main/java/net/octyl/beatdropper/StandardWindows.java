@@ -23,31 +23,49 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.droppers;
+package net.octyl.beatdropper;
 
-import java.util.Collection;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-import net.octyl.beatdropper.SampleSelection;
+public enum StandardWindows implements Window {
+    HANNING {
 
-public abstract class SampleSelector implements SampleModifier {
-
-    @Override
-    public short[] modifySamples(short[] samples, int batchNumber) {
-        return extractSelection(samples, selectSamples(samples.length, batchNumber));
-    }
-
-    private short[] extractSelection(short[] buffer, Collection<SampleSelection> ranges) {
-        int sizeOfAllSelections = ranges.stream().mapToInt(sel -> sel.length()).sum();
-        short[] selectedBuffer = new short[sizeOfAllSelections];
-        int index = 0;
-        for (SampleSelection range : ranges) {
-            // copy from buffer[lowBound:highBound] to
-            // selectedBuffer[index:index+length]
-            System.arraycopy(buffer, range.lowBound(), selectedBuffer, index, range.length());
-            index += range.length();
+        @Override
+        public double apply(int i, int nn) {
+            Double result = cache(i, nn);
+            if (result != null) {
+                return result;
+            }
+            return cache(i, nn, (0.5 * (1.0 - Math.cos(2.0 * Math.PI * (double) i / (double) (nn - 1)))));
         }
-        return selectedBuffer;
+    },
+    HAMMING {
+
+        @Override
+        public double apply(int i, int nn) {
+            Double result = cache(i, nn);
+            if (result != null) {
+                return result;
+            }
+            return cache(i, nn, (0.54 - 0.46 * Math.cos(2.0 * Math.PI * (double) i / (double) (nn - 1))));
+        }
+
+    };
+
+    private final Map<Long, Double> cache = new ConcurrentHashMap<>();
+
+    protected Double cache(int i, int nn) {
+        return cache.get(key(i, nn));
     }
 
-    protected abstract Collection<SampleSelection> selectSamples(int samplesLength, int batchNumber);
+    protected double cache(int i, int nn, double result) {
+        cache.put(key(i, nn), result);
+        return result;
+    }
+
+    private long key(int i, int nn) {
+        return i | (((long) nn) << Integer.SIZE);
+    }
+
 }

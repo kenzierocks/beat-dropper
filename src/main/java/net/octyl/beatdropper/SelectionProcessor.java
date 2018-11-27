@@ -26,6 +26,7 @@
 package net.octyl.beatdropper;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
@@ -133,7 +134,7 @@ public class SelectionProcessor {
         short[] left = new short[sampleAmount];
         short[] right = new short[sampleAmount];
         boolean reading = true;
-        while (reading) {
+        for (int numBatches = 0; reading; numBatches++) {
             int read = 0;
             if (channels == 1) {
                 while (read < left.length) {
@@ -160,8 +161,11 @@ public class SelectionProcessor {
                 }
             }
 
-            short[] cutLeft = modifier.modifySamples(left);
-            short[] cutRight = modifier.modifySamples(right);
+            short[] cutLeft = modifier.modifySamples(left, numBatches);
+            short[] cutRight = modifier.modifySamples(right, numBatches);
+            checkState(cutLeft.length == cutRight.length,
+                    "channel processing should be equal, %s left != %s right",
+                    cutLeft.length, cutRight.length);
             for (int i = 0; i < cutLeft.length; i++) {
                 output.writeShort(cutLeft[i]);
                 output.writeShort(cutRight[i]);

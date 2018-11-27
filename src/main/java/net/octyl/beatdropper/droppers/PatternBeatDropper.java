@@ -63,7 +63,6 @@ public class PatternBeatDropper extends SampleSelector {
 
     private final int bpm;
     private final String pattern;
-    private int counter = 0;
 
     private PatternBeatDropper(int bpm, String pattern) {
         this.bpm = bpm;
@@ -71,10 +70,9 @@ public class PatternBeatDropper extends SampleSelector {
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
+    public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
         // samples here represent one beat
-        boolean drop = pattern.charAt(counter % pattern.length()) == '0';
-        counter++;
+        boolean drop = pattern.charAt(batchNumber % pattern.length()) == '0';
 
         return ImmutableSortedSet.of(SampleSelection.make(0, drop ? 0 : samplesLength));
     }

@@ -97,7 +97,7 @@ public class BeatSwapper extends SampleSelector {
     }
 
     @Override
-    public List<SampleSelection> selectSamples(int samplesLength) {
+    public List<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
         // samples here represent one measure
         // get the beat selections
         ImmutableList<SampleSelection> byBeat = buildMeasure(samplesLength);

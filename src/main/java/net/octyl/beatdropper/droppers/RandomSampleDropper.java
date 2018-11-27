@@ -65,6 +65,8 @@ public class RandomSampleDropper extends SampleSelector {
     private final int sampleSize;
     private final double percentage;
     private final String seed;
+    private boolean currentBatchPasses = false;
+    private int currentBatch = -1;
 
     private RandomSampleDropper(int sampleSize, double percentage, String seed) {
         this.sampleSize = sampleSize;
@@ -74,9 +76,11 @@ public class RandomSampleDropper extends SampleSelector {
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        boolean drop = rng.nextDouble() < percentage;
-        return ImmutableSortedSet.of(SampleSelection.make(0, drop ? 0 : samplesLength));
+    public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
+        if (currentBatch < batchNumber) {
+            currentBatchPasses = rng.nextDouble() < percentage;
+        }
+        return ImmutableSortedSet.of(SampleSelection.make(0, currentBatchPasses ? 0 : samplesLength));
     }
 
     @Override

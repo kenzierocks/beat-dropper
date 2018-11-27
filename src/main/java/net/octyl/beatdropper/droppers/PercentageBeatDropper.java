@@ -67,7 +67,7 @@ public class PercentageBeatDropper extends SampleSelector {
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
+    public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
         // samples here represent one beat
         return ImmutableSortedSet.of(SampleSelection.make(0, (int) (percentage * samplesLength)));
     }

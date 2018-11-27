@@ -56,7 +56,7 @@ public class IdentitySelector extends SampleSelector {
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
+    public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
         return ImmutableSortedSet.of(SampleSelection.make(0, samplesLength));
     }
 

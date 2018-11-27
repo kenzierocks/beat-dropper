@@ -23,31 +23,28 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.droppers;
+package net.octyl.beatdropper;
 
-import java.util.Collection;
+public interface Window {
 
-import net.octyl.beatdropper.SampleSelection;
+    double apply(int i, int nn);
 
-public abstract class SampleSelector implements SampleModifier {
-
-    @Override
-    public short[] modifySamples(short[] samples, int batchNumber) {
-        return extractSelection(samples, selectSamples(samples.length, batchNumber));
-    }
-
-    private short[] extractSelection(short[] buffer, Collection<SampleSelection> ranges) {
-        int sizeOfAllSelections = ranges.stream().mapToInt(sel -> sel.length()).sum();
-        short[] selectedBuffer = new short[sizeOfAllSelections];
-        int index = 0;
-        for (SampleSelection range : ranges) {
-            // copy from buffer[lowBound:highBound] to
-            // selectedBuffer[index:index+length]
-            System.arraycopy(buffer, range.lowBound(), selectedBuffer, index, range.length());
-            index += range.length();
+    default double initDensity(int len) {
+        double den = 0;
+        for (int i = 0; i < len; i++) {
+            double apply = apply(i, len);
+            den += apply * apply;
         }
-        return selectedBuffer;
+
+        return den * len;
     }
 
-    protected abstract Collection<SampleSelection> selectSamples(int samplesLength, int batchNumber);
+    default double[] window(double[] in) {
+        double[] out = in.clone();
+        for (int i = 0; i < in.length; i++) {
+            out[i] = in[i] * apply(i, in.length);
+        }
+        return out;
+    }
+
 }

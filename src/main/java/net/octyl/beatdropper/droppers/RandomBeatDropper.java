@@ -65,6 +65,8 @@ public class RandomBeatDropper extends SampleSelector {
     private final int bpm;
     private final double percentage;
     private final String seed;
+    private boolean currentBatchPasses = false;
+    private int currentBatch = -1;
 
     private RandomBeatDropper(int bpm, double percentage, String seed) {
         this.bpm = bpm;
@@ -74,9 +76,11 @@ public class RandomBeatDropper extends SampleSelector {
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength) {
-        boolean drop = rng.nextDouble() < percentage;
-        return ImmutableSortedSet.of(SampleSelection.make(0, drop ? 0 : samplesLength));
+    public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
+        if (currentBatch < batchNumber) {
+            currentBatchPasses = rng.nextDouble() < percentage;
+        }
+        return ImmutableSortedSet.of(SampleSelection.make(0, currentBatchPasses ? 0 : samplesLength));
     }
 
     @Override

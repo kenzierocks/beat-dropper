@@ -34,8 +34,15 @@ import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ShortBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.sound.sampled.AudioFileFormat.Type;
 import javax.sound.sampled.AudioFormat;
@@ -43,6 +50,9 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
+import org.lwjgl.system.MemoryUtil;
+
+import com.google.common.base.Throwables;
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
 
@@ -61,6 +71,7 @@ public class SelectionProcessor {
         }
     }
 
+    private final ExecutorService taskPool = Executors.newWorkStealingPool();
     private final ByteArrayDataOutput output = ByteStreams.newDataOutput();
     private final Path source;
     private final SampleModifier modifier;
@@ -134,6 +145,7 @@ public class SelectionProcessor {
         short[] left = new short[sampleAmount];
         short[] right = new short[sampleAmount];
         boolean reading = true;
+        List<CompletableFuture<ShortBuffer>> sampOut = new ArrayList<>();
         for (int numBatches = 0; reading; numBatches++) {
             int read = 0;
             if (channels == 1) {
@@ -161,15 +173,72 @@ public class SelectionProcessor {
                 }
             }
 
-            short[] cutLeft = modifier.modifySamples(left, numBatches);
-            short[] cutRight = modifier.modifySamples(right, numBatches);
+            sampOut.add(wrapAndSubmit(left, numBatches));
+            sampOut.add(wrapAndSubmit(right, numBatches));
+        }
+
+        for (int i = 0; i < sampOut.size(); i += 2) {
+            ShortBuffer bufLeft = getFuture(sampOut.get(i));
+            ShortBuffer bufRight = getFuture(sampOut.get(i + 1));
+            short[] cutLeft = unpackAndFree(bufLeft);
+            short[] cutRight = unpackAndFree(bufRight);
+
             checkState(cutLeft.length == cutRight.length,
                     "channel processing should be equal, %s left != %s right",
                     cutLeft.length, cutRight.length);
-            for (int i = 0; i < cutLeft.length; i++) {
-                output.writeShort(cutLeft[i]);
-                output.writeShort(cutRight[i]);
+            for (int k = 0; k < cutLeft.length; k++) {
+                output.writeShort(cutLeft[k]);
+                output.writeShort(cutRight[k]);
             }
         }
     }
+
+    private static <T> T getFuture(CompletableFuture<T> ftr) {
+        try {
+            return ftr.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            Throwable t = e.getCause();
+            Throwables.throwIfUnchecked(t);
+            throw new RuntimeException(t);
+        }
+    }
+
+    private CompletableFuture<ShortBuffer> wrapAndSubmit(short[] samples, int batchNum) {
+        ShortBuffer inputBuffer = copy(samples);
+
+        // ensure no references to samples in task
+        return submit(batchNum, inputBuffer);
+    }
+
+    private CompletableFuture<ShortBuffer> submit(int batchNum, ShortBuffer inputBuffer) {
+        return CompletableFuture.supplyAsync(() -> {
+            short[] sampUnpack = unpackAndFree(inputBuffer);
+            short[] result = modifier.modifySamples(sampUnpack, batchNum);
+            return copy(result);
+        }, taskPool);
+    }
+
+    private short[] unpackAndFree(ShortBuffer inputBuffer) {
+        short[] sampUnpack;
+        try {
+            // unpack
+            sampUnpack = new short[inputBuffer.remaining()];
+            inputBuffer.get(sampUnpack);
+        } finally {
+            // free the memory always
+            MemoryUtil.memFree(inputBuffer);
+        }
+        return sampUnpack;
+    }
+
+    private ShortBuffer copy(short[] samples) {
+        ShortBuffer sampBuf = MemoryUtil.memAllocShort(samples.length);
+        sampBuf.put(samples);
+        sampBuf.flip();
+        return sampBuf;
+    }
+
 }

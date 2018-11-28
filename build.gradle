@@ -13,7 +13,9 @@ inciseBlue {
     lwjgl {
         lwjglVersion = project.lwjglVersion
         addDependency '', true
-        addDependency 'jemalloc', true
+        // jemalloc has a bug, but we'd like it later
+        // https://github.com/LWJGL/lwjgl3/issues/431
+        //addDependency 'jemalloc', true
     }
 }
 

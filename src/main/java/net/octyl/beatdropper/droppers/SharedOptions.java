@@ -126,4 +126,9 @@ public class SharedOptions {
                 .withRequiredArg();
     }
 
+    public static ArgumentAcceptingOptionSpec<String> pattern(OptionParser parser, String itemPlural) {
+        return parser.accepts("pattern", "Pattern of 1s and 0s for which " + itemPlural + " to use.")
+                .withRequiredArg();
+    }
+
 }

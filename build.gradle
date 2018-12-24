@@ -1,8 +1,10 @@
 plugins {
     id 'com.techshroom.incise-blue' version '0.2.1'
+    id "net.ltgt.apt" version "0.19"
     id 'application'
     id 'eclipse'
 }
+apply plugin: "net.ltgt.apt-eclipse"
 
 inciseBlue {
     util {
@@ -13,9 +15,7 @@ inciseBlue {
     lwjgl {
         lwjglVersion = project.lwjglVersion
         addDependency '', true
-        // jemalloc has a bug, but we'd like it later
-        // https://github.com/LWJGL/lwjgl3/issues/431
-        //addDependency 'jemalloc', true
+        addDependency 'jemalloc', true
     }
 }
 
@@ -43,4 +43,6 @@ dependencies {
     annotationProcessor group: 'com.google.auto.service', name: 'auto-service', version: '1.0-rc4'
     annotationProcessor group: 'com.google.auto.value', name: 'auto-value', version: project.autoValueVersion
     compileOnly group: 'com.google.auto.value', name: 'auto-value-annotations', version: project.autoValueVersion
+
+    testImplementation group: 'junit', name: 'junit', version: '4.12'
 }

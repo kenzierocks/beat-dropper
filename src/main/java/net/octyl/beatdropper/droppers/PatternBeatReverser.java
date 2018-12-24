@@ -25,22 +25,16 @@
 
 package net.octyl.beatdropper.droppers;
 
-import java.util.SortedSet;
-
 import com.google.auto.service.AutoService;
-import com.google.common.collect.ImmutableSortedSet;
 
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionSet;
-import net.octyl.beatdropper.SampleSelection;
+import net.octyl.beatdropper.util.ArrayUtil;
 
 /**
- * Drops beats according to a simple pattern made of 0 and 1.
- * 
- * For example, to drop every other beat, use "10". To drop every other beat the
- * other way around, use "01".
+ * Reverses beats in a pattern.
  */
-public class PatternBeatDropper extends SampleSelector {
+public class PatternBeatReverser implements SampleModifier {
 
     @AutoService(SampleModifierFactory.class)
     public static final class Factory extends FactoryBase {
@@ -49,32 +43,33 @@ public class PatternBeatDropper extends SampleSelector {
         private final ArgumentAcceptingOptionSpec<String> pattern;
 
         public Factory() {
-            super("pattern");
+            super("pattern-reverse-beats");
             this.bpm = SharedOptions.bpm(getParser());
             this.pattern = SharedOptions.pattern(getParser(), "beats");
         }
 
         @Override
         public SampleModifier create(OptionSet options) {
-            return new PatternBeatDropper(bpm.value(options), pattern.value(options));
+            return new PatternBeatReverser(bpm.value(options), pattern.value(options));
         }
-
     }
 
     private final int bpm;
     private final String pattern;
 
-    private PatternBeatDropper(int bpm, String pattern) {
+    private PatternBeatReverser(int bpm, String pattern) {
         this.bpm = bpm;
         this.pattern = pattern;
     }
 
     @Override
-    public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
-        // samples here represent one beat
-        boolean drop = pattern.charAt(batchNumber % pattern.length()) == '0';
-
-        return ImmutableSortedSet.of(SampleSelection.make(0, drop ? 0 : samplesLength));
+    public short[] modifySamples(short[] samples, int batchNumber) {
+        boolean reverse = pattern.charAt(batchNumber % pattern.length()) == '1';
+        short[] out = samples;
+        if (reverse) {
+            out = ArrayUtil.reverse(out.clone());
+        }
+        return out;
     }
 
     @Override
@@ -84,7 +79,7 @@ public class PatternBeatDropper extends SampleSelector {
 
     @Override
     public String describeModification() {
-        return "Pattern[bpm=" + bpm + ",pattern=" + pattern + "]";
+        return "PatternReverseBeat[bpm=" + bpm + ",pattern=" + pattern + "]";
     }
 
 }

@@ -1,13 +1,3 @@
-# eclipse
-.classpath
-.project
-.metadata/
-.settings/
-.recommenders/
-bin/
-.factorypath
-.apt_generated
-
 # gradle
 .gradle/
 build/

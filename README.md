@@ -28,5 +28,5 @@ you would have a file named `All Star [Identity].wav`. This name includes info o
 to the file in the brackets.
 
 ### Build and Run
-There's no releases yet, or any planned, so to get up and running simply type `./gradlew installDist` at your terminal.
+There's no release yet, or any planned, so to get up and running simply type `./gradlew installDist` at your terminal.
 Then you can run `./build/install/beat-dropper/bin/beat-dropper` in place of `beat-dropper` in the above commands.

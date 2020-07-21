@@ -25,12 +25,13 @@
 
 package net.octyl.beatdropper.droppers;
 
+import java.util.Map;
 import java.util.Random;
 import java.util.SortedSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.auto.service.AutoService;
 import com.google.common.collect.ImmutableSortedSet;
-
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionSet;
 import net.octyl.beatdropper.SampleSelection;
@@ -49,9 +50,12 @@ public class RandomSampleDropper extends SampleSelector {
 
         public Factory() {
             super("random-sample");
-            this.sampleSize = SharedOptions.sampleSize(getParser());
-            this.percentage = SharedOptions.percentage(getParser(), "Percentage of the samples to drop.");
-            this.seed = SharedOptions.seed(getParser());
+            this.sampleSize = SharedOptions.sampleSize(getParser())
+                .required();
+            this.percentage = SharedOptions.percentage(getParser(), "Percentage of the samples to drop.")
+                .required();
+            this.seed = SharedOptions.seed(getParser())
+                .required();
         }
 
         @Override
@@ -61,26 +65,24 @@ public class RandomSampleDropper extends SampleSelector {
 
     }
 
-    private final Random rng = new Random();
     private final int sampleSize;
     private final double percentage;
     private final String seed;
-    private boolean currentBatchPasses = false;
-    private int currentBatch = -1;
+    private final Map<Integer, Boolean> batchPasses = new ConcurrentHashMap<>();
 
     private RandomSampleDropper(int sampleSize, double percentage, String seed) {
         this.sampleSize = sampleSize;
         this.percentage = percentage;
-        rng.setSeed(seed.hashCode());
         this.seed = seed;
     }
 
     @Override
     public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
-        if (currentBatch < batchNumber) {
-            currentBatchPasses = rng.nextDouble() < percentage;
-        }
-        return ImmutableSortedSet.of(SampleSelection.make(0, currentBatchPasses ? 0 : samplesLength));
+        boolean passes = batchPasses.computeIfAbsent(batchNumber, k -> {
+            var rng = new Random(seed.hashCode());
+            return rng.doubles().skip(k).findFirst().orElseThrow() < percentage;
+        });
+        return ImmutableSortedSet.of(SampleSelection.make(0, passes ? samplesLength : 0));
     }
 
     @Override

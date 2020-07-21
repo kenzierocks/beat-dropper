@@ -50,11 +50,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.google.common.base.Throwables;
 import com.google.common.io.ByteSink;
 import com.google.common.io.ByteSource;
 import com.google.common.io.MoreFiles;
@@ -206,8 +204,8 @@ public class SelectionProcessor {
         }
 
         for (int i = 0; i < sampOut.size(); i += 2) {
-            ShortBuffer bufLeft = getFuture(sampOut.get(i));
-            ShortBuffer bufRight = getFuture(sampOut.get(i + 1));
+            ShortBuffer bufLeft = sampOut.get(i).join();
+            ShortBuffer bufRight = sampOut.get(i + 1).join();
             short[] cutLeft = unpackAndFree(bufLeft);
             short[] cutRight = unpackAndFree(bufRight);
 
@@ -218,19 +216,6 @@ public class SelectionProcessor {
                 rawOutputStream.writeShort(cutLeft[k]);
                 rawOutputStream.writeShort(cutRight[k]);
             }
-        }
-    }
-
-    private static <T> T getFuture(CompletableFuture<T> ftr) {
-        try {
-            return ftr.get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            Throwable t = e.getCause();
-            Throwables.throwIfUnchecked(t);
-            throw new RuntimeException(t);
         }
     }
 

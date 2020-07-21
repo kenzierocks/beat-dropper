@@ -25,8 +25,10 @@
 
 package net.octyl.beatdropper.droppers;
 
+import java.util.Map;
 import java.util.Random;
 import java.util.SortedSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.auto.service.AutoService;
 import com.google.common.collect.ImmutableSortedSet;
@@ -61,26 +63,24 @@ public class RandomBeatDropper extends SampleSelector {
 
     }
 
-    private final Random rng = new Random();
     private final int bpm;
     private final double percentage;
     private final String seed;
-    private boolean currentBatchPasses = false;
-    private int currentBatch = -1;
+    private final Map<Integer, Boolean> batchPasses = new ConcurrentHashMap<>();
 
     private RandomBeatDropper(int bpm, double percentage, String seed) {
         this.bpm = bpm;
         this.percentage = percentage;
-        rng.setSeed(seed.hashCode());
         this.seed = seed;
     }
 
     @Override
     public SortedSet<SampleSelection> selectSamples(int samplesLength, int batchNumber) {
-        if (currentBatch < batchNumber) {
-            currentBatchPasses = rng.nextDouble() < percentage;
-        }
-        return ImmutableSortedSet.of(SampleSelection.make(0, currentBatchPasses ? 0 : samplesLength));
+        boolean passes = batchPasses.computeIfAbsent(batchNumber, k -> {
+            var rng = new Random(seed.hashCode());
+            return rng.doubles().skip(k).findFirst().orElseThrow() < percentage;
+        });
+        return ImmutableSortedSet.of(SampleSelection.make(0, passes ? samplesLength : 0));
     }
 
     @Override

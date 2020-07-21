@@ -37,7 +37,7 @@ public abstract class SampleSelector implements SampleModifier {
     }
 
     private short[] extractSelection(short[] buffer, Collection<SampleSelection> ranges) {
-        int sizeOfAllSelections = ranges.stream().mapToInt(sel -> sel.length()).sum();
+        int sizeOfAllSelections = ranges.stream().mapToInt(SampleSelection::length).sum();
         short[] selectedBuffer = new short[sizeOfAllSelections];
         int index = 0;
         for (SampleSelection range : ranges) {

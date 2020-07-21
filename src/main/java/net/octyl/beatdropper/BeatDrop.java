@@ -33,7 +33,6 @@ import java.util.Arrays;
 import java.util.List;
 
 import com.google.common.io.ByteSink;
-import com.google.common.io.ByteSource;
 import com.google.common.io.MoreFiles;
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.NonOptionArgumentSpec;
@@ -68,6 +67,7 @@ public class BeatDrop {
         OptionParser parser = factory.getParser();
         var sourceOpt = addSourceOpt(parser);
         var sinkOpt = addSinkOpt(parser);
+        var rawFlagOpt = addRawFlag(parser);
         OptionSet options = parser.parse(Arrays.copyOfRange(args, 1, args.length));
 
         if (helpOptionPresent(options)) {
@@ -81,6 +81,7 @@ public class BeatDrop {
 
         var source = sourceOpt.value(options);
         var sink = sinkOpt.value(options);
+        var raw = options.has(rawFlagOpt);
         SampleModifier selector = factory.create(options);
 
         if (sink == null) {
@@ -88,25 +89,24 @@ public class BeatDrop {
             Path sinkTarget =
                 sourceName.startsWith("file:")
                     ? renameFile(Paths.get(sourceName.replaceFirst("file:", "")), selector)
-                    : Paths.get(sourceName.replace('/', '_'));
+                    : Paths.get(renameFile(sourceName.replace('/', '_'), selector));
             sink = MoreFiles.asByteSink(sinkTarget);
         }
 
-        executeBeatDropping(source.getSource(), sink, selector);
+        executeBeatDropping(source.getName(), new SelectionProcessor(source.getSource(), sink, selector, raw));
     }
 
     private static boolean helpOptionPresent(OptionSet options) {
         return options.specs().stream().anyMatch(OptionSpec::isForHelp);
     }
 
-    private static void executeBeatDropping(ByteSource source, ByteSink sink, SampleModifier selector) {
-        SelectionProcessor processor = new SelectionProcessor(source, sink, selector);
+    private static void executeBeatDropping(String sourceName, SelectionProcessor processor) {
         try {
             processor.process();
         } catch (IOException e) {
             LOGGER.error("Error reading/writing audio", e);
         } catch (UnsupportedAudioFileException e) {
-            System.err.println(source + " is not a known audio file type.");
+            System.err.println(sourceName + " is not a known audio file type.");
             System.exit(1);
         }
     }
@@ -114,6 +114,16 @@ public class BeatDrop {
     private static NonOptionArgumentSpec<NamedByteSource> addSourceOpt(OptionParser parser) {
         return parser.nonOptions("Input source.")
             .withValuesConvertedBy(new ByteSourceConverter());
+    }
+
+    private static ArgumentAcceptingOptionSpec<ByteSink> addSinkOpt(OptionParser parser) {
+        return parser.acceptsAll(List.of("o", "output"), "Output sink.")
+            .withRequiredArg()
+            .withValuesConvertedBy(new ByteSinkConverter());
+    }
+
+    private static OptionSpec<Void> addRawFlag(OptionParser parser) {
+        return parser.acceptsAll(List.of("r", "raw"), "Enable raw output");
     }
 
     private static Path renameFile(Path file, SampleModifier modifier) {
@@ -128,12 +138,6 @@ public class BeatDrop {
             return fileName + modStr;
         }
         return fileName.substring(0, lastDot) + modStr + fileName.substring(lastDot);
-    }
-
-    private static ArgumentAcceptingOptionSpec<ByteSink> addSinkOpt(OptionParser parser) {
-        return parser.acceptsAll(List.of("o", "output"), "Output sink.")
-            .withRequiredArg()
-            .withValuesConvertedBy(new ByteSinkConverter());
     }
 
     private static void printHelp() {

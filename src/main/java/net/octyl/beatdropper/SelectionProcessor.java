@@ -35,10 +35,14 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.io.UncheckedIOException;
 import java.nio.ShortBuffer;
 import java.nio.file.Files;
@@ -51,10 +55,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.google.common.base.Throwables;
-import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteSink;
 import com.google.common.io.ByteSource;
-import com.google.common.io.ByteStreams;
 import com.google.common.io.MoreFiles;
 import net.bramp.ffmpeg.FFmpegExecutor;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
@@ -64,6 +66,7 @@ import org.lwjgl.system.MemoryUtil;
 public class SelectionProcessor {
 
     private static final FFmpegExecutor ffExecutor;
+
     static {
         try {
             ffExecutor = new FFmpegExecutor();
@@ -72,16 +75,29 @@ public class SelectionProcessor {
         }
     }
 
-    private final ExecutorService taskPool = Executors.newWorkStealingPool();
-    private final ByteArrayDataOutput output = ByteStreams.newDataOutput();
+    // extra I/O overhead -> 8 extra threads
+    private final ExecutorService taskPool = Executors.newWorkStealingPool(
+        Math.min(64, Runtime.getRuntime().availableProcessors() + 8)
+    );
+    private final DataOutputStream rawOutputStream;
+    private final InputStream rawInputStream;
     private final ByteSource source;
     private final ByteSink sink;
     private final SampleModifier modifier;
+    private final boolean raw;
 
-    public SelectionProcessor(ByteSource source, ByteSink sink, SampleModifier selector) {
+    public SelectionProcessor(ByteSource source, ByteSink sink, SampleModifier selector, boolean raw) {
         this.source = checkNotNull(source, "source");
         this.sink = checkNotNull(sink, "sink");
         this.modifier = checkNotNull(selector, "selector");
+        this.raw = raw;
+        var pipedOutputStream = new PipedOutputStream();
+        this.rawOutputStream = new DataOutputStream(pipedOutputStream);
+        try {
+            this.rawInputStream = new PipedInputStream(pipedOutputStream);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public void process() throws IOException, UnsupportedAudioFileException {
@@ -94,44 +110,64 @@ public class SelectionProcessor {
                 format.getChannels() * 2,
                 format.getSampleRate(),
                 true);
+
             try (AudioInputStream din = AudioSystem.getAudioInputStream(decodedFormat, stream)) {
                 int channels = decodedFormat.getChannels();
-                int frameSize = decodedFormat.getFrameSize();
                 System.err.println(decodedFormat);
 
-                if (frameSize == -1) {
-                    frameSize = 2;
-                }
-
-                processAudioStream(din, channels, frameSize);
+                var future = CompletableFuture.runAsync(() -> {
+                    try {
+                        try {
+                            processAudioStream(din, channels);
+                        } finally {
+                            rawOutputStream.close();
+                        }
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
+                writeToSink(format.getSampleRate());
+                future.join();
+            } finally {
+                rawInputStream.close();
             }
-            writeToSink(format.getSampleRate());
         }
     }
 
     private void writeToSink(float sampleRate) throws IOException {
-        Path temporaryFile = Files.createTempFile("beat-dropper", ".wav").toAbsolutePath();
-        Path temporaryMp3File = Files.createTempFile("beat-dropper", ".mp3").toAbsolutePath();
-        try {
-            AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true, true);
-            AudioInputStream audio = new AudioInputStream(
-                    new ByteArrayInputStream(output.toByteArray()),
-                    fmt,
-                    AudioSystem.NOT_SPECIFIED);
-            AudioSystem.write(audio, Type.WAVE, temporaryFile.toFile());
-            ffExecutor.createJob(new FFmpegBuilder()
+        AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true, true);
+        AudioInputStream audio = new AudioInputStream(
+            rawInputStream,
+            fmt,
+            AudioSystem.NOT_SPECIFIED);
+        var targetType = Type.AU;
+        if (raw) {
+            try (OutputStream output = sink.openBufferedStream()) {
+                AudioSystem.write(audio, targetType, output);
+            }
+        } else {
+            Path temporaryFile = Files.createTempFile("beat-dropper", "." + targetType.getExtension()).toAbsolutePath();
+            Path temporaryMp3File = Files.createTempFile("beat-dropper", ".mp3").toAbsolutePath();
+            try {
+                AudioSystem.write(audio, targetType, temporaryFile.toFile());
+                ffExecutor.createJob(new FFmpegBuilder()
                     .addInput(temporaryFile.toString())
                     .overrideOutputFiles(true)
                     .addOutput(temporaryMp3File.toString())
                     .done())
                     .run();
-            MoreFiles.asByteSource(temporaryMp3File).copyTo(sink);
-        } finally {
-            Files.delete(temporaryFile);
+                MoreFiles.asByteSource(temporaryMp3File).copyTo(sink);
+            } finally {
+                try {
+                    Files.delete(temporaryFile);
+                } finally {
+                    Files.delete(temporaryMp3File);
+                }
+            }
         }
     }
 
-    private void processAudioStream(AudioInputStream stream, int channels, int frameSize) throws IOException {
+    private void processAudioStream(AudioInputStream stream, int channels) throws IOException {
         DataInputStream dis = new DataInputStream(new BufferedInputStream(stream));
         int sampleAmount = (int) ((modifier.requestedTimeLength() * stream.getFormat().getFrameRate()) / 1000);
         short[] left = new short[sampleAmount];
@@ -176,11 +212,11 @@ public class SelectionProcessor {
             short[] cutRight = unpackAndFree(bufRight);
 
             checkState(cutLeft.length == cutRight.length,
-                    "channel processing should be equal, %s left != %s right",
-                    cutLeft.length, cutRight.length);
+                "channel processing should be equal, %s left != %s right",
+                cutLeft.length, cutRight.length);
             for (int k = 0; k < cutLeft.length; k++) {
-                output.writeShort(cutLeft[k]);
-                output.writeShort(cutRight[k]);
+                rawOutputStream.writeShort(cutLeft[k]);
+                rawOutputStream.writeShort(cutRight[k]);
             }
         }
     }

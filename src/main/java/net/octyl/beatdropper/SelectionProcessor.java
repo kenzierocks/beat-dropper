@@ -28,6 +28,12 @@ package net.octyl.beatdropper;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
+
+import javax.sound.sampled.AudioFileFormat.Type;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -44,21 +50,16 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import javax.sound.sampled.AudioFileFormat.Type;
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.UnsupportedAudioFileException;
-
-import org.lwjgl.system.MemoryUtil;
-
 import com.google.common.base.Throwables;
 import com.google.common.io.ByteArrayDataOutput;
+import com.google.common.io.ByteSink;
+import com.google.common.io.ByteSource;
 import com.google.common.io.ByteStreams;
-
+import com.google.common.io.MoreFiles;
 import net.bramp.ffmpeg.FFmpegExecutor;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
 import net.octyl.beatdropper.droppers.SampleModifier;
+import org.lwjgl.system.MemoryUtil;
 
 public class SelectionProcessor {
 
@@ -73,54 +74,44 @@ public class SelectionProcessor {
 
     private final ExecutorService taskPool = Executors.newWorkStealingPool();
     private final ByteArrayDataOutput output = ByteStreams.newDataOutput();
-    private final Path source;
+    private final ByteSource source;
+    private final ByteSink sink;
     private final SampleModifier modifier;
 
-    public SelectionProcessor(Path source, SampleModifier selector) {
+    public SelectionProcessor(ByteSource source, ByteSink sink, SampleModifier selector) {
         this.source = checkNotNull(source, "source");
+        this.sink = checkNotNull(sink, "sink");
         this.modifier = checkNotNull(selector, "selector");
     }
 
     public void process() throws IOException, UnsupportedAudioFileException {
-        AudioInputStream stream = AudioSystem.getAudioInputStream(source.toFile());
-        AudioFormat format = stream.getFormat();
-        AudioFormat decodedFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+        try (AudioInputStream stream = AudioSystem.getAudioInputStream(source.openBufferedStream())) {
+            AudioFormat format = stream.getFormat();
+            AudioFormat decodedFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
                 format.getSampleRate(),
                 16,
                 format.getChannels(),
                 format.getChannels() * 2,
                 format.getSampleRate(),
                 true);
-        AudioInputStream din = AudioSystem.getAudioInputStream(decodedFormat, stream);
+            try (AudioInputStream din = AudioSystem.getAudioInputStream(decodedFormat, stream)) {
+                int channels = decodedFormat.getChannels();
+                int frameSize = decodedFormat.getFrameSize();
+                System.err.println(decodedFormat);
 
-        int channels = decodedFormat.getChannels();
-        int frameSize = decodedFormat.getFrameSize();
-        System.err.println(decodedFormat);
+                if (frameSize == -1) {
+                    frameSize = 2;
+                }
 
-        if (frameSize == -1) {
-            frameSize = 2;
+                processAudioStream(din, channels, frameSize);
+            }
+            writeToSink(format.getSampleRate());
         }
-
-        processAudioStream(din, channels, frameSize);
-        writeToFile(format.getSampleRate(), renameFile(source));
     }
 
-    private Path renameFile(Path file) {
-        String newFileName = renameFile(file.getFileName().toString());
-        return file.resolveSibling(newFileName);
-    }
-
-    private String renameFile(String fileName) {
-        String modStr = " [" + modifier.describeModification() + "]";
-        int lastDot = fileName.lastIndexOf('.');
-        if (lastDot == -1) {
-            return fileName + modStr;
-        }
-        return fileName.substring(0, lastDot) + modStr + fileName.substring(lastDot);
-    }
-
-    private void writeToFile(float sampleRate, Path target) throws IOException {
-        Path temporaryFile = Files.createTempFile("beat-dropper", ".wav");
+    private void writeToSink(float sampleRate) throws IOException {
+        Path temporaryFile = Files.createTempFile("beat-dropper", ".wav").toAbsolutePath();
+        Path temporaryMp3File = Files.createTempFile("beat-dropper", ".mp3").toAbsolutePath();
         try {
             AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true, true);
             AudioInputStream audio = new AudioInputStream(
@@ -131,9 +122,10 @@ public class SelectionProcessor {
             ffExecutor.createJob(new FFmpegBuilder()
                     .addInput(temporaryFile.toString())
                     .overrideOutputFiles(true)
-                    .addOutput(target.toString())
+                    .addOutput(temporaryMp3File.toString())
                     .done())
                     .run();
+            MoreFiles.asByteSource(temporaryMp3File).copyTo(sink);
         } finally {
             Files.delete(temporaryFile);
         }

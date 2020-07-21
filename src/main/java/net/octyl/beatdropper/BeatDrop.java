@@ -25,24 +25,29 @@
 
 package net.octyl.beatdropper;
 
+import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.List;
 
-import javax.sound.sampled.UnsupportedAudioFileException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.google.common.io.ByteSink;
+import com.google.common.io.ByteSource;
+import com.google.common.io.MoreFiles;
+import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.NonOptionArgumentSpec;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
-import joptsimple.util.PathConverter;
-import joptsimple.util.PathProperties;
 import net.octyl.beatdropper.droppers.SampleModifier;
 import net.octyl.beatdropper.droppers.SampleModifierFactories;
 import net.octyl.beatdropper.droppers.SampleModifierFactory;
+import net.octyl.beatdropper.util.ByteSinkConverter;
+import net.octyl.beatdropper.util.ByteSourceConverter;
+import net.octyl.beatdropper.util.NamedByteSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BeatDrop {
 
@@ -61,7 +66,8 @@ public class BeatDrop {
         SampleModifierFactory factory = SampleModifierFactories.getById(dropperFactoryId);
 
         OptionParser parser = factory.getParser();
-        NonOptionArgumentSpec<Path> sourceOpt = addSourceOpt(parser);
+        var sourceOpt = addSourceOpt(parser);
+        var sinkOpt = addSinkOpt(parser);
         OptionSet options = parser.parse(Arrays.copyOfRange(args, 1, args.length));
 
         if (helpOptionPresent(options)) {
@@ -73,18 +79,28 @@ public class BeatDrop {
             return;
         }
 
-        Path source = sourceOpt.value(options);
+        var source = sourceOpt.value(options);
+        var sink = sinkOpt.value(options);
         SampleModifier selector = factory.create(options);
 
-        executeBeatDropping(source, selector);
+        if (sink == null) {
+            String sourceName = source.getName();
+            Path sinkTarget =
+                sourceName.startsWith("file:")
+                    ? renameFile(Paths.get(sourceName.replaceFirst("file:", "")), selector)
+                    : Paths.get(sourceName.replace('/', '_'));
+            sink = MoreFiles.asByteSink(sinkTarget);
+        }
+
+        executeBeatDropping(source.getSource(), sink, selector);
     }
 
     private static boolean helpOptionPresent(OptionSet options) {
         return options.specs().stream().anyMatch(OptionSpec::isForHelp);
     }
 
-    private static void executeBeatDropping(Path source, SampleModifier selector) {
-        SelectionProcessor processor = new SelectionProcessor(source, selector);
+    private static void executeBeatDropping(ByteSource source, ByteSink sink, SampleModifier selector) {
+        SelectionProcessor processor = new SelectionProcessor(source, sink, selector);
         try {
             processor.process();
         } catch (IOException e) {
@@ -95,17 +111,37 @@ public class BeatDrop {
         }
     }
 
-    private static NonOptionArgumentSpec<Path> addSourceOpt(OptionParser parser) {
-        return parser.nonOptions("Input file.")
-                .withValuesConvertedBy(new PathConverter(PathProperties.READABLE));
+    private static NonOptionArgumentSpec<NamedByteSource> addSourceOpt(OptionParser parser) {
+        return parser.nonOptions("Input source.")
+            .withValuesConvertedBy(new ByteSourceConverter());
+    }
+
+    private static Path renameFile(Path file, SampleModifier modifier) {
+        String newFileName = renameFile(file.getFileName().toString(), modifier);
+        return file.resolveSibling(newFileName);
+    }
+
+    private static String renameFile(String fileName, SampleModifier modifier) {
+        String modStr = " [" + modifier.describeModification() + "]";
+        int lastDot = fileName.lastIndexOf('.');
+        if (lastDot == -1) {
+            return fileName + modStr;
+        }
+        return fileName.substring(0, lastDot) + modStr + fileName.substring(lastDot);
+    }
+
+    private static ArgumentAcceptingOptionSpec<ByteSink> addSinkOpt(OptionParser parser) {
+        return parser.acceptsAll(List.of("o", "output"), "Output sink.")
+            .withRequiredArg()
+            .withValuesConvertedBy(new ByteSinkConverter());
     }
 
     private static void printHelp() {
         String formattedDroppers = SampleModifierFactories.formatAvailableForCli();
         System.err.println(
-                "usage: beat-dropper <dropper> [dropper options] <file>\n\n"
-                        + "For dropper options, see beat-dropper [dropper] --help.\n\n"
-                        + "<dropper> may be any one of the following:\n" + formattedDroppers);
+            "usage: beat-dropper <dropper> [dropper options] <file>\n\n"
+                + "For dropper options, see beat-dropper [dropper] --help.\n\n"
+                + "<dropper> may be any one of the following:\n" + formattedDroppers);
     }
 
     private static boolean findString(String[] args, String... targets) {

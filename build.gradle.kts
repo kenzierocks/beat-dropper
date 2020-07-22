@@ -30,9 +30,26 @@ dependencies {
     implementation("com.flowpowered:flow-math:1.0.3")
 
 	implementation("com.googlecode.soundlibs:mp3spi:1.9.5.4")
-    implementation("net.bramp.ffmpeg:ffmpeg:0.6.2")
 
-    implementation("org.bytedeco.javacpp-presets:fftw-platform:3.3.8-1.4.4")
+    val javacppPresets = mapOf(
+        "ffmpeg" to "4.2.2",
+        "fftw" to "3.3.8",
+        "javacpp" to null
+    )
+    val javacppVersion = "1.5.3"
+    // take desktop platforms, 64 bit
+    val wantedPlatforms = listOf("linux", "macosx", "windows").map { "$it-x86_64" }
+    for ((name, version) in javacppPresets) {
+        val fullVersion = when (version) {
+            null -> javacppVersion
+            else -> "$version-$javacppVersion"
+        }
+        implementation("org.bytedeco:$name:$fullVersion")
+        for (platform in wantedPlatforms) {
+            implementation("org.bytedeco:$name:$fullVersion:$platform")
+            implementation("org.bytedeco:$name:$fullVersion:$platform")
+        }
+    }
 
     implementation("com.google.guava:guava:29.0-jre")
 

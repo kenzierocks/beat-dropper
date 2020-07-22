@@ -45,6 +45,8 @@ import net.octyl.beatdropper.droppers.SampleModifierFactory;
 import net.octyl.beatdropper.util.ByteSinkConverter;
 import net.octyl.beatdropper.util.ByteSourceConverter;
 import net.octyl.beatdropper.util.NamedByteSource;
+import org.bytedeco.ffmpeg.ffmpeg;
+import org.bytedeco.javacpp.Loader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +54,7 @@ public class BeatDrop {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BeatDrop.class);
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         if (args.length < 2 || findString(Arrays.copyOf(args, 1), "-h", "--help")) {
             // length must be >= 2
             // dropper & file
@@ -93,7 +95,7 @@ public class BeatDrop {
             sink = MoreFiles.asByteSink(sinkTarget);
         }
 
-        executeBeatDropping(source.getName(), new SelectionProcessor(source.getSource(), sink, selector, raw));
+        executeBeatDropping(source.getName(), new SelectionProcessor(source, sink, selector, raw));
     }
 
     private static boolean helpOptionPresent(OptionSet options) {
@@ -106,7 +108,7 @@ public class BeatDrop {
         } catch (IOException e) {
             LOGGER.error("Error reading/writing audio", e);
         } catch (UnsupportedAudioFileException e) {
-            System.err.println(sourceName + " is not a known audio file type.");
+            System.err.println(sourceName + " is not a known audio file type: " + e.getMessage());
             System.exit(1);
         }
     }

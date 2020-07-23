@@ -44,7 +44,6 @@ import static org.bytedeco.ffmpeg.global.avutil.AVMEDIA_TYPE_AUDIO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16;
 import static org.bytedeco.ffmpeg.global.avutil.av_frame_alloc;
-import static org.bytedeco.ffmpeg.global.avutil.av_frame_clone;
 import static org.bytedeco.ffmpeg.global.avutil.av_opt_set_int;
 import static org.bytedeco.ffmpeg.global.swresample.swr_alloc;
 import static org.bytedeco.ffmpeg.global.swresample.swr_init;
@@ -57,11 +56,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.ArrayDeque;
+import java.util.Queue;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.IntStream;
 
 import com.google.common.base.Throwables;
@@ -102,7 +103,10 @@ public class FFmpegInputStream extends InputStream {
     private final int audioStreamIndex;
     private final AudioFormat audioFormat;
     private final SwrContext swrCtx;
-    private final BlockingQueue<AVFrame> pendingFrames = new ArrayBlockingQueue<>(20);
+    private final Queue<ByteBuffer> frameQueue = new ArrayDeque<>(50);
+    private final Lock frameSendLock = new ReentrantLock();
+    // This condition is awaited by both sides whenever they cannot pull/push to the queue
+    private final Condition waitingOtherSide = frameSendLock.newCondition();
     private final Thread sendingThread;
     private final AtomicBoolean closed = new AtomicBoolean();
     private ByteBuffer currentFrame;
@@ -243,12 +247,28 @@ public class FFmpegInputStream extends InputStream {
                         }
                         var convertedFrames = new SwrResampleIterator(swrCtx, frame, targetFrame);
                         while (convertedFrames.hasNext()) {
-                            var converted = convertedFrames.next();
-                            var copy = av_frame_clone(converted);
-                            while (!pendingFrames.offer(copy, 50, TimeUnit.MILLISECONDS)) {
-                                if (closed.get()) {
-                                    return;
+                            var next = convertedFrames.next();
+                            var outputBuffer = MemoryUtil.memAlloc(next.nb_samples() * 4);
+                            MemoryUtil.memCopy(
+                                next.data(0).address(),
+                                MemoryUtil.memAddress(outputBuffer),
+                                outputBuffer.remaining()
+                            );
+                            frameSendLock.lock();
+                            try {
+                                // await close / frame queue poll
+                                while (true) {
+                                    if (closed.get()) {
+                                        return;
+                                    }
+                                    if (frameQueue.offer(outputBuffer)) {
+                                        waitingOtherSide.signal();
+                                        break;
+                                    }
+                                    waitingOtherSide.await();
                                 }
+                            } finally {
+                                frameSendLock.unlock();
                             }
                         }
                     }
@@ -260,44 +280,50 @@ public class FFmpegInputStream extends InputStream {
             closeSilently(t);
             Throwables.throwIfUnchecked(t);
             throw new RuntimeException(t);
+        } finally {
+            // signal to the other side that we died, if needed
+            frameSendLock.lock();
+            try {
+                waitingOtherSide.signal();
+            } finally {
+                frameSendLock.unlock();
+            }
         }
     }
 
     private ByteBuffer loadCurrentFrame() {
-        if (currentFrame == null || !currentFrame.hasRemaining()) {
-            if (currentFrame != null) {
-                MemoryUtil.memFree(currentFrame);
-                // paranoid, do not double-free
-                currentFrame = null;
-            }
-            try {
-                AVFrame next;
-                do {
-                    if (!sendingThread.isAlive()) {
-                        next = null;
-                        break;
+        frameSendLock.lock();
+        try {
+            if (currentFrame == null || !currentFrame.hasRemaining()) {
+                if (currentFrame != null) {
+                    MemoryUtil.memFree(currentFrame);
+                    // paranoid, do not double-free
+                    currentFrame = null;
+                }
+                try {
+                    ByteBuffer next;
+                    while (true) {
+                        if (!sendingThread.isAlive() || closed.get()) {
+                            next = null;
+                            break;
+                        }
+                        next = frameQueue.poll();
+                        if (next != null) {
+                            break;
+                        }
+                        waitingOtherSide.await();
                     }
-                    next = pendingFrames.poll(50, TimeUnit.MILLISECONDS);
-                }
-                while (next == null);
 
-                if (next == null) {
-                    return null;
+                    currentFrame = next;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
                 }
-
-                var outputBuffer = MemoryUtil.memAlloc(next.nb_samples() * 4);
-                MemoryUtil.memCopy(
-                    next.data(0).address(),
-                    MemoryUtil.memAddress(outputBuffer),
-                    outputBuffer.remaining()
-                );
-                currentFrame = outputBuffer;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException(e);
             }
+            return currentFrame;
+        } finally {
+            frameSendLock.unlock();
         }
-        return currentFrame;
     }
 
     @Override
@@ -337,8 +363,16 @@ public class FFmpegInputStream extends InputStream {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         } finally {
-            if (currentFrame != null) {
-                MemoryUtil.memFree(currentFrame);
+            frameSendLock.lock();
+            try {
+                waitingOtherSide.signal();
+                if (currentFrame != null) {
+                    MemoryUtil.memFree(currentFrame);
+                    // paranoid, do not double-free
+                    currentFrame = null;
+                }
+            } finally {
+                frameSendLock.unlock();
             }
         }
     }

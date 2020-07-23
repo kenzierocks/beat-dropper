@@ -25,6 +25,9 @@
 
 package net.octyl.beatdropper.util;
 
+import static java.nio.file.StandardOpenOption.READ;
+
+
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.file.Path;
@@ -49,7 +52,7 @@ public class ReadableByteChannelProviderConverter implements ValueConverter<Chan
             return STANDARD_IN;
         }
         Path path = delegate.convert(value);
-        return ChannelProvider.forPath(path);
+        return ChannelProvider.forPath(path, READ);
     }
 
     @SuppressWarnings("unchecked")

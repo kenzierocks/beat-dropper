@@ -25,6 +25,11 @@
 
 package net.octyl.beatdropper.util;
 
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.WRITE;
+
+
 import java.nio.channels.WritableByteChannel;
 import java.nio.file.Path;
 
@@ -46,7 +51,7 @@ public class WritableByteChannelProviderConverter implements ValueConverter<Chan
             return STANDARD_OUT;
         }
         Path path = delegate.convert(value);
-        return ChannelProvider.forPath(path);
+        return ChannelProvider.forPath(path, CREATE, WRITE, TRUNCATE_EXISTING);
     }
 
     @SuppressWarnings("unchecked")

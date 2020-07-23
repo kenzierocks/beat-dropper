@@ -25,6 +25,11 @@
 
 package net.octyl.beatdropper;
 
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.WRITE;
+
+
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
@@ -52,7 +57,7 @@ public class BeatDrop {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BeatDrop.class);
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         if (args.length < 2 || findString(Arrays.copyOf(args, 1), "-h", "--help")) {
             // length must be >= 2
             // dropper & file
@@ -90,7 +95,7 @@ public class BeatDrop {
                 sourceName.startsWith("file:")
                     ? renameFile(Paths.get(sourceName.replaceFirst("file:", "")), selector)
                     : Paths.get(renameFile(sourceName.replace('/', '_'), selector));
-            sink = ChannelProvider.forPath(sinkTarget);
+            sink = ChannelProvider.forPath(sinkTarget, CREATE, WRITE, TRUNCATE_EXISTING);
         }
 
         executeBeatDropping(source.getIdentifier(), new SelectionProcessor(source, sink, selector, raw));

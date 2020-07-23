@@ -27,6 +27,7 @@ package net.octyl.beatdropper.util;
 
 import static com.google.common.base.Preconditions.checkState;
 import static net.octyl.beatdropper.util.FFmpegMacros.av_err2str;
+import static org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_CAP_VARIABLE_FRAME_SIZE;
 import static org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_FLAG_GLOBAL_HEADER;
 import static org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_FLAG_QSCALE;
 import static org.bytedeco.ffmpeg.global.avcodec.av_packet_rescale_ts;
@@ -169,27 +170,35 @@ public class FFmpegOutputStream extends OutputStream {
                 throw new IllegalStateException("Error initializing swr: " + av_err2str(error));
             }
 
+            int nbSamples = (codec.capabilities() & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) != 0
+                ? 8192
+                : codecCtx.frame_size();
+
             outputFrame = closer.register(av_frame_alloc(), avutil::av_frame_free);
             checkState(outputFrame != null, "Unable to allocate output frame");
             outputFrame
                 .channel_layout(AV_CH_LAYOUT_STEREO)
                 .sample_rate(audioStream.codecpar().sample_rate())
                 .format(AV_SAMPLE_FMT_S16)
-                .nb_samples(codecCtx.frame_size());
+                .nb_samples(nbSamples);
             error = av_frame_get_buffer(outputFrame, 0);
             if (error != 0) {
-                throw new IllegalStateException("Unable to get buffer: " + av_err2str(error));
+                throw new IllegalStateException("Unable to get output buffer: " + av_err2str(error));
             }
 
             resampledFrame = closer.register(av_frame_alloc(), avutil::av_frame_free);
             if (resampledFrame == null) {
-                throw new IllegalStateException("Unable to allocate resampled frame");
+                throw new IllegalStateException("Unable to allocate resample frame");
             }
             resampledFrame
                 .format(codecCtx.sample_fmt())
                 .sample_rate(sampleRate)
                 .channel_layout(codecCtx.channel_layout())
-                .nb_samples(codecCtx.frame_size());
+                .nb_samples(nbSamples);
+            error = av_frame_get_buffer(resampledFrame, 0);
+            if (error != 0) {
+                throw new IllegalStateException("Unable to get resample buffer: " + av_err2str(error));
+            }
 
             outputBuffer = MemoryUtil.memAlloc(Short.BYTES * outputFrame.nb_samples() * codecCtx.channels());
             closer.register(outputBuffer, MemoryUtil::memFree);
@@ -256,7 +265,6 @@ public class FFmpegOutputStream extends OutputStream {
 
         while (convertedFrames.hasNext()) {
             var next = convertedFrames.next();
-            next.pts(pts);
             flushFrame(next);
         }
     }

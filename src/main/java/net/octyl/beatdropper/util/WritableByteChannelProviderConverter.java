@@ -25,35 +25,35 @@
 
 package net.octyl.beatdropper.util;
 
-import java.io.OutputStream;
+import java.nio.channels.Channels;
+import java.nio.channels.WritableByteChannel;
+import java.nio.file.Path;
 
-import com.google.common.io.ByteSink;
-import com.google.common.io.MoreFiles;
 import joptsimple.ValueConverter;
 import joptsimple.util.PathConverter;
-import joptsimple.util.PathProperties;
 
-public class ByteSinkConverter implements ValueConverter<ByteSink> {
-
-    private final ByteSink standardOutSource = new ByteSink() {
+public class WritableByteChannelProviderConverter implements ValueConverter<ChannelProvider<? extends WritableByteChannel>> {
+    private static final ChannelProvider<WritableByteChannel> STANDARD_OUT = new ChannelProvider.Simple<>("pipe:1") {
         @Override
-        public OutputStream openStream() {
-            return System.out;
+        public WritableByteChannel openChannel() {
+            return Channels.newChannel(System.out);
         }
     };
     private final PathConverter delegate = new PathConverter();
 
     @Override
-    public ByteSink convert(String value) {
+    public ChannelProvider<? extends WritableByteChannel> convert(String value) {
         if (value.equals("-")) {
-            return standardOutSource;
+            return STANDARD_OUT;
         }
-        return MoreFiles.asByteSink(delegate.convert(value));
+        Path path = delegate.convert(value);
+        return ChannelProvider.forPath(path);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public Class<? extends ByteSink> valueType() {
-        return ByteSink.class;
+    public Class<? extends ChannelProvider<WritableByteChannel>> valueType() {
+        return (Class<? extends ChannelProvider<WritableByteChannel>>) (Object) ChannelProvider.class;
     }
 
     @Override

@@ -39,13 +39,11 @@ import static org.bytedeco.ffmpeg.global.avformat.av_read_frame;
 import static org.bytedeco.ffmpeg.global.avformat.avformat_alloc_context;
 import static org.bytedeco.ffmpeg.global.avformat.avformat_find_stream_info;
 import static org.bytedeco.ffmpeg.global.avformat.avformat_open_input;
-import static org.bytedeco.ffmpeg.global.avformat.avio_alloc_context;
 import static org.bytedeco.ffmpeg.global.avutil.AVERROR_EOF;
 import static org.bytedeco.ffmpeg.global.avutil.AVMEDIA_TYPE_AUDIO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16;
 import static org.bytedeco.ffmpeg.global.avutil.av_frame_alloc;
-import static org.bytedeco.ffmpeg.global.avutil.av_malloc;
 import static org.bytedeco.ffmpeg.global.avutil.av_opt_set_int;
 import static org.bytedeco.ffmpeg.global.swresample.swr_alloc;
 import static org.bytedeco.ffmpeg.global.swresample.swr_convert_frame;
@@ -71,50 +69,19 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.bytedeco.ffmpeg.avcodec.AVCodecContext;
 import org.bytedeco.ffmpeg.avcodec.AVPacket;
 import org.bytedeco.ffmpeg.avformat.AVFormatContext;
-import org.bytedeco.ffmpeg.avformat.Read_packet_Pointer_BytePointer_int;
 import org.bytedeco.ffmpeg.avutil.AVDictionary;
 import org.bytedeco.ffmpeg.avutil.AVFrame;
 import org.bytedeco.ffmpeg.global.avcodec;
+import org.bytedeco.ffmpeg.global.avformat;
 import org.bytedeco.ffmpeg.global.avutil;
 import org.bytedeco.ffmpeg.global.swresample;
 import org.bytedeco.ffmpeg.swresample.SwrContext;
-import org.bytedeco.javacpp.BytePointer;
-import org.bytedeco.javacpp.Pointer;
 import org.lwjgl.system.MemoryUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * An input stream based on piping another stream through FFmpeg.
  */
 public class FFmpegInputStream extends InputStream {
-
-    private static final class ReadCallback extends Read_packet_Pointer_BytePointer_int {
-
-        private static final Logger LOGGER = LoggerFactory.getLogger(ReadCallback.class);
-
-        private final InputStream source;
-
-        ReadCallback(InputStream source) {
-            this.source = source;
-        }
-
-        @Override
-        public int call(Pointer opaque, BytePointer buf, int buf_size) {
-            try {
-                byte[] b = new byte[buf_size];
-                int size = source.read(b);
-                if (size < 0) {
-                    return AVERROR_EOF;
-                }
-                buf.put(b, 0, size);
-                return size;
-            } catch (IOException e) {
-                LOGGER.warn("Error reading from input stream", e);
-                return -1;
-            }
-        }
-    }
 
     private static final ThreadFactory THREAD_FACTORY = new ThreadFactoryBuilder()
         .setNameFormat("ffmpeg-decoder-%d")
@@ -122,7 +89,7 @@ public class FFmpegInputStream extends InputStream {
         .build();
 
     private final AutoCloser closer = new AutoCloser();
-    private final AVFormatContext ctx = closer.register(avformat_alloc_context());
+    private final AVFormatContext ctx = closer.register(avformat_alloc_context(), avformat::avformat_free_context);
 
     {
         checkState(ctx != null, "Unable to allocate context");
@@ -140,13 +107,10 @@ public class FFmpegInputStream extends InputStream {
     private final AtomicBoolean closed = new AtomicBoolean();
     private ByteBuffer currentFrame;
 
-    public FFmpegInputStream(String name, InputStream source) throws UnsupportedAudioFileException, IOException {
-        ReadCallback readCallback = closer.register(new ReadCallback(source).retainReference());
-        var avioCtx = avio_alloc_context(new BytePointer(av_malloc(4096)), 4096, 0, ctx,
-            readCallback, null, null);
+    public FFmpegInputStream(String name, AvioCallbacks ioCallbacks) throws UnsupportedAudioFileException {
+        var avioCtx = closer.register(ioCallbacks).allocateContext(4096, false);
         checkState(avioCtx != null, "Unable to allocate IO context");
-        closer.register(avioCtx);
-        ctx.pb(avioCtx);
+        ctx.pb(closer.register(avioCtx));
         int error = avformat_open_input(ctx, name, null, null);
         if (error != 0) {
             throw new IllegalStateException("Error opening input: " + av_err2str(error));
@@ -275,28 +239,16 @@ public class FFmpegInputStream extends InputStream {
                         if (error != 0) {
                             throw new IllegalStateException("Error getting frame from decoder: " + av_err2str(error));
                         }
-                        // conversion frame loop
-                        var currentFrame = frame;
-                        while (true) {
-                            error = swr_convert_frame(swrCtx, targetFrame, currentFrame);
-                            if (error != 0) {
-                                throw new IllegalStateException("Error converting frame: " + av_err2str(error));
-                            }
-                            currentFrame = null;
-                            if (targetFrame.nb_samples() == 0) {
-                                // end of conversion currently
-                                break;
-                            }
-                            if (targetFrame.channels() != 2) {
-                                throw new IllegalStateException("Need exactly 2 channels");
-                            }
-                            var output = MemoryUtil.memAlloc(targetFrame.nb_samples() * 4);
+                        var convertedFrames = new SwrResampleIterator(swrCtx, frame, targetFrame);
+                        while (convertedFrames.hasNext()) {
+                            var converted = convertedFrames.next();
+                            var outputBuffer = MemoryUtil.memAlloc(converted.nb_samples() * 4);
                             MemoryUtil.memCopy(
-                                targetFrame.data(0).address(),
-                                MemoryUtil.memAddress(output),
-                                output.remaining()
+                                converted.data(0).address(),
+                                MemoryUtil.memAddress(outputBuffer),
+                                outputBuffer.remaining()
                             );
-                            while (!pendingFrames.offer(output, 50, TimeUnit.MILLISECONDS)) {
+                            while (!pendingFrames.offer(outputBuffer, 50, TimeUnit.MILLISECONDS)) {
                                 if (closed.get()) {
                                     return;
                                 }

@@ -25,21 +25,37 @@
 
 package net.octyl.beatdropper.util;
 
-import com.google.auto.value.AutoValue;
-import com.google.common.io.ByteSource;
+import static net.octyl.beatdropper.util.FFmpegMacros.av_err2str;
+import static org.bytedeco.ffmpeg.global.swresample.swr_convert_frame;
 
-@AutoValue
-public abstract class NamedByteSource {
 
-    public static NamedByteSource of(String name, ByteSource source) {
-        return new AutoValue_NamedByteSource(name, source);
+import com.google.common.collect.AbstractIterator;
+import org.bytedeco.ffmpeg.avutil.AVFrame;
+import org.bytedeco.ffmpeg.swresample.SwrContext;
+
+public class SwrResampleIterator extends AbstractIterator<AVFrame> {
+
+    private final SwrContext swrCtx;
+    private final AVFrame output;
+    private AVFrame currentFrame;
+
+    public SwrResampleIterator(SwrContext swrCtx, AVFrame input, AVFrame output) {
+        this.swrCtx = swrCtx;
+        this.currentFrame = input;
+        this.output = output;
     }
 
-    NamedByteSource() {
+    @Override
+    protected AVFrame computeNext() {
+        int error = swr_convert_frame(swrCtx, output, currentFrame);
+        if (error != 0) {
+            throw new IllegalStateException("Error converting frame: " + av_err2str(error));
+        }
+        currentFrame = null;
+        if (output.nb_samples() == 0) {
+            // end of conversion currently
+            return endOfData();
+        }
+        return output;
     }
-
-    public abstract String getName();
-
-    public abstract ByteSource getSource();
-
 }

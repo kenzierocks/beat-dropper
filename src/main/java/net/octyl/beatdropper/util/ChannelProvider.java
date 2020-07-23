@@ -25,53 +25,46 @@
 
 package net.octyl.beatdropper.util;
 
-import java.util.Deque;
-import java.util.LinkedList;
-
-import org.checkerframework.checker.nullness.qual.Nullable;
+import java.io.IOException;
+import java.nio.channels.Channel;
+import java.nio.channels.FileChannel;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
 
 /**
- * {@link AutoCloseable}-compatible closer.
+ * Provider of a {@link Channel}.
  */
-public class AutoCloser implements AutoCloseable {
+public interface ChannelProvider<C extends Channel> {
 
-    public interface AutoCloseableHook<C> {
-        void close(C reference) throws Exception;
-    }
+    abstract class Simple<C extends Channel> implements ChannelProvider<C> {
+        private final String identifier;
 
-    // LIFO queue, the last thing registered is the first thing closed
-    private final Deque<AutoCloseable> closeables = new LinkedList<>();
-
-    public <C extends AutoCloseable> C register(@Nullable C autoCloseable) {
-        if (autoCloseable != null) {
-            this.closeables.addFirst(autoCloseable);
+        protected Simple(String identifier) {
+            this.identifier = identifier;
         }
-        return autoCloseable;
-    }
 
-    public <C> C register(@Nullable C reference, AutoCloseableHook<C> closer) {
-        if (reference != null) {
-            register(() -> closer.close(reference));
+        @Override
+        public String getIdentifier() {
+            return identifier;
         }
-        return reference;
     }
 
-    @Override
-    public void close() throws Exception {
-        Exception rethrow = null;
-        for (AutoCloseable closeable : closeables) {
-            try {
-                closeable.close();
-            } catch (Exception t) {
-                if (rethrow == null) {
-                    rethrow = t;
-                } else {
-                    rethrow.addSuppressed(t);
-                }
+    static ChannelProvider<FileChannel> forPath(Path path, OpenOption... options) {
+        return new Simple<>("file:" + path.toAbsolutePath().toString()) {
+            @Override
+            public FileChannel openChannel() throws IOException {
+                return FileChannel.open(path, options);
             }
-        }
-        if (rethrow != null) {
-            throw rethrow;
-        }
+        };
     }
+
+    /**
+     * An easy way to identify the source of the byte channel.
+     *
+     * @return a string representing the source of the byte channel
+     */
+    String getIdentifier();
+
+    C openChannel() throws IOException;
+
 }

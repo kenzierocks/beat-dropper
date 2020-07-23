@@ -35,8 +35,10 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.DataInput;
 import java.io.DataInputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -45,18 +47,26 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.io.UncheckedIOException;
+import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.google.common.io.ByteSink;
+import com.google.common.io.ByteStreams;
 import com.google.common.io.LittleEndianDataInputStream;
+import com.google.common.io.LittleEndianDataOutputStream;
 import net.octyl.beatdropper.droppers.SampleModifier;
+import net.octyl.beatdropper.util.AvioCallbacks;
+import net.octyl.beatdropper.util.ChannelProvider;
 import net.octyl.beatdropper.util.FFmpegInputStream;
-import net.octyl.beatdropper.util.NamedByteSource;
+import net.octyl.beatdropper.util.FFmpegOutputStream;
+import org.bytedeco.ffmpeg.global.avcodec;
 import org.lwjgl.system.MemoryUtil;
 
 public class SelectionProcessor {
@@ -65,20 +75,23 @@ public class SelectionProcessor {
     private final ExecutorService taskPool = Executors.newWorkStealingPool(
         Math.min(64, Runtime.getRuntime().availableProcessors() + 8)
     );
-    private final DataOutputStream rawOutputStream;
+    private final OutputStream rawOutputStream;
     private final InputStream rawInputStream;
-    private final NamedByteSource source;
-    private final ByteSink sink;
+    private final ChannelProvider<? extends ReadableByteChannel> source;
+    private final ChannelProvider<? extends WritableByteChannel> sink;
     private final SampleModifier modifier;
     private final boolean raw;
 
-    public SelectionProcessor(NamedByteSource source, ByteSink sink, SampleModifier selector, boolean raw) {
+    public SelectionProcessor(ChannelProvider<? extends ReadableByteChannel> source,
+                              ChannelProvider<? extends WritableByteChannel> sink,
+                              SampleModifier selector,
+                              boolean raw) {
         this.source = checkNotNull(source, "source");
         this.sink = checkNotNull(sink, "sink");
         this.modifier = checkNotNull(selector, "selector");
         this.raw = raw;
         var pipedOutputStream = new PipedOutputStream();
-        this.rawOutputStream = new DataOutputStream(pipedOutputStream);
+        this.rawOutputStream = new BufferedOutputStream(pipedOutputStream);
         try {
             this.rawInputStream = new PipedInputStream(pipedOutputStream);
         } catch (IOException e) {
@@ -113,8 +126,8 @@ public class SelectionProcessor {
     private AudioInputStream openAudioInput() throws IOException, UnsupportedAudioFileException {
         // unwrap via FFmpeg
         var stream = new FFmpegInputStream(
-            source.getName(),
-            source.getSource().openBufferedStream()
+            source.getIdentifier(),
+            AvioCallbacks.forChannel(source.openChannel())
         );
         return new AudioInputStream(
             stream,
@@ -124,30 +137,25 @@ public class SelectionProcessor {
     }
 
     private void writeToSink(float sampleRate) throws IOException {
-        AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true, true);
-        AudioInputStream audio = new AudioInputStream(
-            rawInputStream,
-            fmt,
-            AudioSystem.NOT_SPECIFIED);
-        var targetType = Type.AU;
         if (raw) {
-            try (OutputStream output = sink.openBufferedStream()) {
-                AudioSystem.write(audio, targetType, output);
+            AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true,
+                ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN
+            );
+            AudioInputStream audio = new AudioInputStream(
+                rawInputStream,
+                fmt,
+                AudioSystem.NOT_SPECIFIED);
+            try (var output = Channels.newOutputStream(sink.openChannel())) {
+                AudioSystem.write(audio, Type.AU, output);
             }
         } else {
-            try (var input = new PipedInputStream(); var ffmpeg = new FFmpegInputStream("sink", input)) {
-                var future = CompletableFuture.runAsync(() -> {
-                    try (var output = new PipedOutputStream(input)) {
-                        AudioSystem.write(audio, targetType, output);
-                    } catch (IOException e) {
-                        throw new UncheckedIOException(e);
-                    }
-                }, taskPool);
-                sink.writeFrom(ffmpeg);
-                future.join();
-            } catch (UnsupportedAudioFileException e) {
-                // we are feeding known-good audio
-                throw new AssertionError(e);
+            try (var ffmpeg = new FFmpegOutputStream(
+                avcodec.AV_CODEC_ID_MP3,
+                "mpeg",
+                (int) sampleRate,
+                AvioCallbacks.forChannel(sink.openChannel())
+            )) {
+                ByteStreams.copy(rawInputStream, ffmpeg);
             }
         }
     }
@@ -179,6 +187,9 @@ public class SelectionProcessor {
             sampOut.add(wrapAndSubmit(right, numBatches));
         }
 
+        DataOutput dos = stream.getFormat().isBigEndian()
+            ? new DataOutputStream(rawOutputStream)
+            : new LittleEndianDataOutputStream(rawOutputStream);
         for (int i = 0; i < sampOut.size(); i += 2) {
             ShortBuffer bufLeft = sampOut.get(i).join();
             ShortBuffer bufRight = sampOut.get(i + 1).join();
@@ -189,8 +200,8 @@ public class SelectionProcessor {
                 "channel processing should be equal, %s left != %s right",
                 cutLeft.length, cutRight.length);
             for (int k = 0; k < cutLeft.length; k++) {
-                rawOutputStream.writeShort(cutLeft[k]);
-                rawOutputStream.writeShort(cutRight[k]);
+                dos.writeShort(cutLeft[k]);
+                dos.writeShort(cutRight[k]);
             }
         }
     }

@@ -27,13 +27,13 @@ package net.octyl.beatdropper;
 
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.IOException;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 
-import com.google.common.io.ByteSink;
-import com.google.common.io.MoreFiles;
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.NonOptionArgumentSpec;
 import joptsimple.OptionParser;
@@ -42,11 +42,9 @@ import joptsimple.OptionSpec;
 import net.octyl.beatdropper.droppers.SampleModifier;
 import net.octyl.beatdropper.droppers.SampleModifierFactories;
 import net.octyl.beatdropper.droppers.SampleModifierFactory;
-import net.octyl.beatdropper.util.ByteSinkConverter;
-import net.octyl.beatdropper.util.ByteSourceConverter;
-import net.octyl.beatdropper.util.NamedByteSource;
-import org.bytedeco.ffmpeg.ffmpeg;
-import org.bytedeco.javacpp.Loader;
+import net.octyl.beatdropper.util.ChannelProvider;
+import net.octyl.beatdropper.util.ReadableByteChannelProviderConverter;
+import net.octyl.beatdropper.util.WritableByteChannelProviderConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,15 +85,15 @@ public class BeatDrop {
         SampleModifier selector = factory.create(options);
 
         if (sink == null) {
-            String sourceName = source.getName();
+            String sourceName = source.getIdentifier();
             Path sinkTarget =
                 sourceName.startsWith("file:")
                     ? renameFile(Paths.get(sourceName.replaceFirst("file:", "")), selector)
                     : Paths.get(renameFile(sourceName.replace('/', '_'), selector));
-            sink = MoreFiles.asByteSink(sinkTarget);
+            sink = ChannelProvider.forPath(sinkTarget);
         }
 
-        executeBeatDropping(source.getName(), new SelectionProcessor(source, sink, selector, raw));
+        executeBeatDropping(source.getIdentifier(), new SelectionProcessor(source, sink, selector, raw));
     }
 
     private static boolean helpOptionPresent(OptionSet options) {
@@ -113,15 +111,15 @@ public class BeatDrop {
         }
     }
 
-    private static NonOptionArgumentSpec<NamedByteSource> addSourceOpt(OptionParser parser) {
+    private static NonOptionArgumentSpec<ChannelProvider<? extends ReadableByteChannel>> addSourceOpt(OptionParser parser) {
         return parser.nonOptions("Input source.")
-            .withValuesConvertedBy(new ByteSourceConverter());
+            .withValuesConvertedBy(new ReadableByteChannelProviderConverter());
     }
 
-    private static ArgumentAcceptingOptionSpec<ByteSink> addSinkOpt(OptionParser parser) {
+    private static ArgumentAcceptingOptionSpec<ChannelProvider<? extends WritableByteChannel>> addSinkOpt(OptionParser parser) {
         return parser.acceptsAll(List.of("o", "output"), "Output sink.")
             .withRequiredArg()
-            .withValuesConvertedBy(new ByteSinkConverter());
+            .withValuesConvertedBy(new WritableByteChannelProviderConverter());
     }
 
     private static OptionSpec<Void> addRawFlag(OptionParser parser) {

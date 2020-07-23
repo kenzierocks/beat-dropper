@@ -25,37 +25,37 @@
 
 package net.octyl.beatdropper.util;
 
-import java.io.InputStream;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.file.Path;
 
-import com.google.common.io.ByteSource;
-import com.google.common.io.MoreFiles;
 import joptsimple.ValueConverter;
 import joptsimple.util.PathConverter;
 import joptsimple.util.PathProperties;
 
-public class ByteSourceConverter implements ValueConverter<NamedByteSource> {
+public class ReadableByteChannelProviderConverter implements ValueConverter<ChannelProvider<? extends ReadableByteChannel>> {
 
-    private final NamedByteSource standardInSource = NamedByteSource.of("stream:stdin", new ByteSource() {
+    private static final ChannelProvider<ReadableByteChannel> STANDARD_IN = new ChannelProvider.Simple<>("pipe:0") {
         @Override
-        public InputStream openStream() {
-            return System.in;
+        public ReadableByteChannel openChannel() {
+            return Channels.newChannel(System.in);
         }
-    });
+    };
     private final PathConverter delegate = new PathConverter(PathProperties.READABLE);
 
     @Override
-    public NamedByteSource convert(String value) {
+    public ChannelProvider<? extends ReadableByteChannel> convert(String value) {
         if (value.equals("-")) {
-            return standardInSource;
+            return STANDARD_IN;
         }
         Path path = delegate.convert(value);
-        return NamedByteSource.of("file:" + path.toAbsolutePath().toString(), MoreFiles.asByteSource(path));
+        return ChannelProvider.forPath(path);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public Class<? extends NamedByteSource> valueType() {
-        return NamedByteSource.class;
+    public Class<? extends ChannelProvider<ReadableByteChannel>> valueType() {
+        return (Class<? extends ChannelProvider<ReadableByteChannel>>) (Object) ChannelProvider.class;
     }
 
     @Override

@@ -25,7 +25,6 @@
 
 package net.octyl.beatdropper.util;
 
-import java.nio.channels.Channels;
 import java.nio.channels.WritableByteChannel;
 import java.nio.file.Path;
 
@@ -36,7 +35,7 @@ public class WritableByteChannelProviderConverter implements ValueConverter<Chan
     private static final ChannelProvider<WritableByteChannel> STANDARD_OUT = new ChannelProvider.Simple<>("pipe:1") {
         @Override
         public WritableByteChannel openChannel() {
-            return Channels.newChannel(System.out);
+            return new PrintStreamWritableByteChannel(System.out);
         }
     };
     private final PathConverter delegate = new PathConverter();

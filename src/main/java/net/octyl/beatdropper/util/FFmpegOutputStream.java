@@ -55,7 +55,6 @@ import static org.bytedeco.ffmpeg.global.avutil.av_get_bytes_per_sample;
 import static org.bytedeco.ffmpeg.global.avutil.av_get_planar_sample_fmt;
 import static org.bytedeco.ffmpeg.global.avutil.av_make_q;
 import static org.bytedeco.ffmpeg.global.avutil.av_opt_set_int;
-import static org.bytedeco.ffmpeg.global.avutil.av_rescale_q;
 import static org.bytedeco.ffmpeg.global.swresample.swr_alloc;
 import static org.bytedeco.ffmpeg.global.swresample.swr_init;
 import static org.bytedeco.ffmpeg.presets.avutil.AVERROR_EAGAIN;

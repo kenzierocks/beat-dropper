@@ -191,6 +191,8 @@ public class FFmpegInputStream extends InputStream {
                 throw new IllegalStateException("Unable to allocate packet");
             }
 
+            codecCtx.pkt_timebase(audioStream.time_base());
+
             sendingThread = THREAD_FACTORY.newThread(this::decode);
             sendingThread.start();
             closer.register(sendingThread, t -> {

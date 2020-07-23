@@ -26,7 +26,9 @@
 package net.octyl.beatdropper.util;
 
 import static net.octyl.beatdropper.util.FFmpegMacros.av_err2str;
+import static org.bytedeco.ffmpeg.global.avutil.av_frame_make_writable;
 import static org.bytedeco.ffmpeg.global.swresample.swr_convert_frame;
+import static org.bytedeco.ffmpeg.global.swresample.swr_next_pts;
 
 
 import com.google.common.collect.AbstractIterator;
@@ -37,16 +39,19 @@ public class SwrResampleIterator extends AbstractIterator<AVFrame> {
 
     private final SwrContext swrCtx;
     private final AVFrame output;
+    private final long pts;
     private AVFrame currentFrame;
 
     public SwrResampleIterator(SwrContext swrCtx, AVFrame input, AVFrame output) {
         this.swrCtx = swrCtx;
         this.currentFrame = input;
         this.output = output;
+        this.pts = input.pts();
     }
 
     @Override
     protected AVFrame computeNext() {
+        av_frame_make_writable(output);
         int error = swr_convert_frame(swrCtx, output, currentFrame);
         if (error != 0) {
             throw new IllegalStateException("Error converting frame: " + av_err2str(error));
@@ -56,6 +61,7 @@ public class SwrResampleIterator extends AbstractIterator<AVFrame> {
             // end of conversion currently
             return endOfData();
         }
+        output.pts(swr_next_pts(swrCtx, pts));
         return output;
     }
 }

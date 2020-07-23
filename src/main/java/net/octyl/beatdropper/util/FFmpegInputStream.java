@@ -44,9 +44,9 @@ import static org.bytedeco.ffmpeg.global.avutil.AVMEDIA_TYPE_AUDIO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16;
 import static org.bytedeco.ffmpeg.global.avutil.av_frame_alloc;
+import static org.bytedeco.ffmpeg.global.avutil.av_frame_clone;
 import static org.bytedeco.ffmpeg.global.avutil.av_opt_set_int;
 import static org.bytedeco.ffmpeg.global.swresample.swr_alloc;
-import static org.bytedeco.ffmpeg.global.swresample.swr_convert_frame;
 import static org.bytedeco.ffmpeg.global.swresample.swr_init;
 import static org.bytedeco.ffmpeg.presets.avutil.AVERROR_EAGAIN;
 
@@ -102,7 +102,7 @@ public class FFmpegInputStream extends InputStream {
     private final int audioStreamIndex;
     private final AudioFormat audioFormat;
     private final SwrContext swrCtx;
-    private final BlockingQueue<ByteBuffer> pendingFrames = new ArrayBlockingQueue<>(20);
+    private final BlockingQueue<AVFrame> pendingFrames = new ArrayBlockingQueue<>(20);
     private final Thread sendingThread;
     private final AtomicBoolean closed = new AtomicBoolean();
     private ByteBuffer currentFrame;
@@ -244,13 +244,8 @@ public class FFmpegInputStream extends InputStream {
                         var convertedFrames = new SwrResampleIterator(swrCtx, frame, targetFrame);
                         while (convertedFrames.hasNext()) {
                             var converted = convertedFrames.next();
-                            var outputBuffer = MemoryUtil.memAlloc(converted.nb_samples() * 4);
-                            MemoryUtil.memCopy(
-                                converted.data(0).address(),
-                                MemoryUtil.memAddress(outputBuffer),
-                                outputBuffer.remaining()
-                            );
-                            while (!pendingFrames.offer(outputBuffer, 50, TimeUnit.MILLISECONDS)) {
+                            var copy = av_frame_clone(converted);
+                            while (!pendingFrames.offer(copy, 50, TimeUnit.MILLISECONDS)) {
                                 if (closed.get()) {
                                     return;
                                 }
@@ -276,12 +271,27 @@ public class FFmpegInputStream extends InputStream {
                 currentFrame = null;
             }
             try {
-                ByteBuffer next;
+                AVFrame next;
                 do {
+                    if (!sendingThread.isAlive()) {
+                        next = null;
+                        break;
+                    }
                     next = pendingFrames.poll(50, TimeUnit.MILLISECONDS);
                 }
-                while (next == null && sendingThread.isAlive());
-                currentFrame = next;
+                while (next == null);
+
+                if (next == null) {
+                    return null;
+                }
+
+                var outputBuffer = MemoryUtil.memAlloc(next.nb_samples() * 4);
+                MemoryUtil.memCopy(
+                    next.data(0).address(),
+                    MemoryUtil.memAddress(outputBuffer),
+                    outputBuffer.remaining()
+                );
+                currentFrame = outputBuffer;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);

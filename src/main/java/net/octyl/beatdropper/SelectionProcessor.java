@@ -53,7 +53,6 @@ import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -141,11 +140,12 @@ public class SelectionProcessor {
             AudioFormat fmt = new AudioFormat(sampleRate, 16, 2, true,
                 ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN
             );
-            AudioInputStream audio = new AudioInputStream(
+            try (AudioInputStream audio = new AudioInputStream(
                 rawInputStream,
                 fmt,
-                AudioSystem.NOT_SPECIFIED);
-            try (var output = Channels.newOutputStream(sink.openChannel())) {
+                AudioSystem.NOT_SPECIFIED
+            );
+                 var output = Channels.newOutputStream(sink.openChannel())) {
                 AudioSystem.write(audio, Type.AU, output);
             }
         } else {
@@ -169,13 +169,13 @@ public class SelectionProcessor {
         short[] left = new short[sampleAmount];
         short[] right = new short[sampleAmount];
         boolean reading = true;
-        List<CompletableFuture<ShortBuffer>> sampOut = new ArrayList<>();
+        var sampOut = new ArrayList<CompletableFuture<ShortBuffer>>();
         for (int numBatches = 0; reading; numBatches++) {
             int read = 0;
-            while (read < left.length * 2) {
-                short[] buf = read % 2 == 0 ? left : right;
+            while (read < left.length) {
                 try {
-                    buf[read / 2] = dis.readShort();
+                    left[read] = dis.readShort();
+                    right[read] = dis.readShort();
                 } catch (EOFException e) {
                     reading = false;
                     break;
@@ -183,8 +183,8 @@ public class SelectionProcessor {
                 read++;
             }
 
-            sampOut.add(wrapAndSubmit(left, numBatches));
-            sampOut.add(wrapAndSubmit(right, numBatches));
+            sampOut.add(wrapAndSubmit(left, read, numBatches));
+            sampOut.add(wrapAndSubmit(right, read, numBatches));
         }
 
         DataOutput dos = stream.getFormat().isBigEndian()
@@ -206,8 +206,8 @@ public class SelectionProcessor {
         }
     }
 
-    private CompletableFuture<ShortBuffer> wrapAndSubmit(short[] samples, int batchNum) {
-        ShortBuffer inputBuffer = copy(samples);
+    private CompletableFuture<ShortBuffer> wrapAndSubmit(short[] samples, int read, int batchNum) {
+        ShortBuffer inputBuffer = copy(samples, read);
 
         // ensure no references to samples in task
         return submit(batchNum, inputBuffer);
@@ -217,7 +217,7 @@ public class SelectionProcessor {
         return CompletableFuture.supplyAsync(() -> {
             short[] sampUnpack = unpackAndFree(inputBuffer);
             short[] result = modifier.modifySamples(sampUnpack, batchNum);
-            return copy(result);
+            return copy(result, result.length);
         }, taskPool);
     }
 
@@ -234,9 +234,9 @@ public class SelectionProcessor {
         return sampUnpack;
     }
 
-    private ShortBuffer copy(short[] samples) {
-        ShortBuffer sampBuf = MemoryUtil.memAllocShort(samples.length);
-        sampBuf.put(samples);
+    private ShortBuffer copy(short[] samples, int read) {
+        ShortBuffer sampBuf = MemoryUtil.memAllocShort(read);
+        sampBuf.put(samples, 0, read);
         sampBuf.flip();
         return sampBuf;
     }

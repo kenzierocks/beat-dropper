@@ -29,8 +29,6 @@ dependencies {
 
     implementation("com.flowpowered:flow-math:1.0.3")
 
-	implementation("com.googlecode.soundlibs:mp3spi:1.9.5.4")
-
     val javacppPresets = mapOf(
         "ffmpeg" to "4.2.2",
         "fftw" to "3.3.8",

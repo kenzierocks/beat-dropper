@@ -28,6 +28,7 @@ package net.octyl.beatdropper.util;
 import static com.google.common.base.Preconditions.checkState;
 import static net.octyl.beatdropper.util.FFmpegMacros.av_err2str;
 import static org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_FLAG_GLOBAL_HEADER;
+import static org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_FLAG_QSCALE;
 import static org.bytedeco.ffmpeg.global.avcodec.av_packet_rescale_ts;
 import static org.bytedeco.ffmpeg.global.avcodec.av_packet_unref;
 import static org.bytedeco.ffmpeg.global.avcodec.avcodec_alloc_context3;
@@ -46,6 +47,7 @@ import static org.bytedeco.ffmpeg.global.avformat.avformat_write_header;
 import static org.bytedeco.ffmpeg.global.avutil.AVERROR_EOF;
 import static org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO;
 import static org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16;
+import static org.bytedeco.ffmpeg.global.avutil.FF_QP2LAMBDA;
 import static org.bytedeco.ffmpeg.global.avutil.av_frame_alloc;
 import static org.bytedeco.ffmpeg.global.avutil.av_frame_get_buffer;
 import static org.bytedeco.ffmpeg.global.avutil.av_frame_make_writable;
@@ -135,11 +137,15 @@ public class FFmpegOutputStream extends OutputStream {
             codecCtx = closer.register(avcodec_alloc_context3(codec), avcodec::avcodec_free_context);
             codecCtx
                 .sample_fmt(desiredFormat)
-                .bit_rate(128_000)
                 .sample_rate(sampleRate)
                 .channels(2)
                 .channel_layout(AV_CH_LAYOUT_STEREO)
                 .time_base(av_make_q(1, sampleRate));
+
+            // set -q:a 2
+            codecCtx.flags(codecCtx.flags() | AV_CODEC_FLAG_QSCALE);
+            codecCtx.global_quality(FF_QP2LAMBDA * 2);
+
             audioStream.time_base(av_make_q(1, sampleRate));
             if ((ctx.oformat().flags() & AVFMT_GLOBALHEADER) != 0) {
                 codecCtx.flags(AV_CODEC_FLAG_GLOBAL_HEADER);

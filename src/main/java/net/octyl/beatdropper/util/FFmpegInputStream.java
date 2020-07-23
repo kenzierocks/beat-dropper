@@ -78,11 +78,15 @@ import org.bytedeco.ffmpeg.global.avutil;
 import org.bytedeco.ffmpeg.global.swresample;
 import org.bytedeco.ffmpeg.swresample.SwrContext;
 import org.lwjgl.system.MemoryUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An input stream based on piping another stream through FFmpeg.
  */
 public class FFmpegInputStream extends InputStream {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(FFmpegInputStream.class);
 
     private static final ThreadFactory THREAD_FACTORY = new ThreadFactoryBuilder()
         .setNameFormat("ffmpeg-decoder-%d")
@@ -107,7 +111,7 @@ public class FFmpegInputStream extends InputStream {
     private final Lock frameSendLock = new ReentrantLock();
     // This condition is awaited by both sides whenever they cannot pull/push to the queue
     private final Condition waitingOtherSide = frameSendLock.newCondition();
-    private final Thread sendingThread;
+    private final AtomicBoolean finishedSending = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private ByteBuffer currentFrame;
 
@@ -197,7 +201,7 @@ public class FFmpegInputStream extends InputStream {
 
             codecCtx.pkt_timebase(audioStream.time_base());
 
-            sendingThread = THREAD_FACTORY.newThread(this::decode);
+            Thread sendingThread = THREAD_FACTORY.newThread(this::decode);
             sendingThread.start();
             closer.register(sendingThread, t -> {
                 t.interrupt();
@@ -278,9 +282,9 @@ public class FFmpegInputStream extends InputStream {
             }
         } catch (Throwable t) {
             closeSilently(t);
-            Throwables.throwIfUnchecked(t);
-            throw new RuntimeException(t);
+            LOGGER.error("FFmpeg input stream crashed!", t);
         } finally {
+            finishedSending.set(true);
             // signal to the other side that we died, if needed
             frameSendLock.lock();
             try {
@@ -303,7 +307,7 @@ public class FFmpegInputStream extends InputStream {
                 try {
                     ByteBuffer next;
                     while (true) {
-                        if (!sendingThread.isAlive() || closed.get()) {
+                        if (finishedSending.get() || closed.get()) {
                             next = null;
                             break;
                         }

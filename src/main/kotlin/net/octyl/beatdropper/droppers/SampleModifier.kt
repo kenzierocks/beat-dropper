@@ -23,38 +23,21 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.droppers
 
-import static org.junit.Assert.*;
 
-import org.junit.Test;
+interface SampleModifier {
+    /**
+     * Modify a sample buffer.
+     */
+    suspend fun modifySamples(samples: ShortArray, batchNumber: Int): ShortArray
 
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
-    }
-
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
-    }
-
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
+    /**
+     * The amount of time, in milliseconds, that the samples provided to
+     * [.modifySamples] should represent.
+     *
+     * @return the number of milliseconds that the samples should represent
+     */
+    fun requestedTimeLength(): Long
+    fun describeModification(): String
 }

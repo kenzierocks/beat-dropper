@@ -23,38 +23,47 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.util
 
-import static org.junit.Assert.*;
+import java.util.Deque
+import java.util.LinkedList
 
-import org.junit.Test;
-
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+/**
+ * [AutoCloseable]-compatible closer.
+ */
+class AutoCloser : AutoCloseable {
+    // LIFO queue, the last thing registered is the first thing closed
+    private val closeables: Deque<AutoCloseable> = LinkedList()
+    fun <C : AutoCloseable?> register(autoCloseable: C): C {
+        if (autoCloseable != null) {
+            closeables.addFirst(autoCloseable)
+        }
+        return autoCloseable
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    inline fun <C, D : C?> register(reference: D, crossinline closer: (C) -> Unit): D {
+        if (reference != null) {
+            register(AutoCloseable { closer(reference) })
+        }
+        return reference
     }
 
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
+    @Throws(Exception::class)
+    override fun close() {
+        var rethrow: Exception? = null
+        for (closeable in closeables) {
+            try {
+                closeable.close()
+            } catch (t: Exception) {
+                if (rethrow == null) {
+                    rethrow = t
+                } else {
+                    rethrow.addSuppressed(t)
+                }
+            }
+        }
+        if (rethrow != null) {
+            throw rethrow
+        }
     }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

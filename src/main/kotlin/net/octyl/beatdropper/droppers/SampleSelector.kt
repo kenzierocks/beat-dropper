@@ -23,38 +23,27 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.droppers
 
-import static org.junit.Assert.*;
+import net.octyl.beatdropper.SampleSelection
 
-import org.junit.Test;
-
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+abstract class SampleSelector : SampleModifier {
+    override suspend fun modifySamples(samples: ShortArray, batchNumber: Int): ShortArray {
+        return extractSelection(samples, selectSamples(samples.size, batchNumber))
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    private fun extractSelection(buffer: ShortArray, ranges: Collection<SampleSelection>): ShortArray {
+        val sizeOfAllSelections = ranges.stream().mapToInt { obj: SampleSelection -> obj.length }.sum()
+        val selectedBuffer = ShortArray(sizeOfAllSelections)
+        var index = 0
+        for (range in ranges) {
+            // copy from buffer[lowBound:highBound] to
+            // selectedBuffer[index:index+length]
+            System.arraycopy(buffer, range.lowBound, selectedBuffer, index, range.length)
+            index += range.length
+        }
+        return selectedBuffer
     }
 
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
+    protected abstract suspend fun selectSamples(samplesLength: Int, batchNumber: Int): Collection<SampleSelection>
 }

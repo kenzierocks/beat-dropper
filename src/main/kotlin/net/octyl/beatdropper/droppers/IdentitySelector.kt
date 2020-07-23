@@ -23,38 +23,29 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.droppers
 
-import static org.junit.Assert.*;
+import com.google.auto.service.AutoService
+import joptsimple.OptionSet
+import net.octyl.beatdropper.SampleSelection
+import java.util.SortedSet
 
-import org.junit.Test;
-
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+/**
+ * Drops no beats. Chill af.
+ */
+class IdentitySelector private constructor() : SampleSelector() {
+    @AutoService(SampleModifierFactory::class)
+    class Factory : FactoryBase("identity") {
+        override fun create(options: OptionSet): SampleModifier {
+            return IdentitySelector()
+        }
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    public override suspend fun selectSamples(samplesLength: Int, batchNumber: Int): SortedSet<SampleSelection> {
+        return sortedSetOf(SampleSelection(0, samplesLength))
     }
 
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
+    override fun requestedTimeLength() = 8192L
 
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
+    override fun describeModification() = "Identity"
 }

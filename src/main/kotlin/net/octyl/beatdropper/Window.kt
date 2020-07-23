@@ -23,38 +23,25 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper
 
-import static org.junit.Assert.*;
 
-import org.junit.Test;
-
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+interface Window {
+    fun apply(i: Int, nn: Int): Double
+    fun initDensity(len: Int): Double {
+        var den = 0.0
+        for (i in 0 until len) {
+            val apply = apply(i, len)
+            den += apply * apply
+        }
+        return den * len
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    fun window(input: DoubleArray): DoubleArray {
+        val out = input.copyOf()
+        for (i in input.indices) {
+            out[i] = input[i] * apply(i, input.size)
+        }
+        return out
     }
-
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

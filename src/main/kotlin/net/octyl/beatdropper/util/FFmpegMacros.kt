@@ -23,38 +23,19 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.util
 
-import static org.junit.Assert.*;
+import org.bytedeco.ffmpeg.global.avutil.av_make_error_string
+import org.bytedeco.javacpp.BytePointer
 
-import org.junit.Test;
+private const val AV_ERROR_MAX_STRING_SIZE = 64L
 
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+fun avErr2Str(error: Int): String {
+    BytePointer(AV_ERROR_MAX_STRING_SIZE).use { buffer ->
+        return av_make_error_string(
+            buffer,
+            AV_ERROR_MAX_STRING_SIZE,
+            error
+        ).string
     }
-
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
-    }
-
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

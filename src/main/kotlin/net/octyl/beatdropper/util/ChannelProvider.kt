@@ -23,38 +23,38 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.util
 
-import static org.junit.Assert.*;
+import java.io.IOException
+import java.nio.channels.Channel
+import java.nio.channels.FileChannel
+import java.nio.file.OpenOption
+import java.nio.file.Path
 
-import org.junit.Test;
+/**
+ * Provider of a [Channel].
+ */
+interface ChannelProvider<C : Channel?> {
+    abstract class Simple<C : Channel?> protected constructor(override val identifier: String) : ChannelProvider<C>
 
-public class ArrayUtilTest {
+    /**
+     * An easy way to identify the source of the byte channel.
+     *
+     * @return a string representing the source of the byte channel
+     */
+    val identifier: String
 
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+    @Throws(IOException::class)
+    fun openChannel(): C
+
+    companion object {
+        fun forPath(path: Path, vararg options: OpenOption?): ChannelProvider<FileChannel> {
+            return object : Simple<FileChannel>("file:" + path.toAbsolutePath().toString()) {
+                @Throws(IOException::class)
+                override fun openChannel(): FileChannel {
+                    return FileChannel.open(path, *options)
+                }
+            }
+        }
     }
-
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
-    }
-
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

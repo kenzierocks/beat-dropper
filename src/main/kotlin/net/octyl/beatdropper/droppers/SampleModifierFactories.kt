@@ -23,38 +23,20 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.droppers
 
-import static org.junit.Assert.*;
+import java.util.ServiceLoader
 
-import org.junit.Test;
+object SampleModifierFactories {
+    private val byId: Map<String, SampleModifierFactory> = ServiceLoader.load(SampleModifierFactory::class.java)
+        .asSequence()
+        .sortedBy { it.id }
+        .associateBy { it.id }
 
-public class ArrayUtilTest {
+    fun getById(id: String): SampleModifierFactory =
+        byId[id] ?: error("No factory by the ID $id")
 
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+    fun formatAvailableForCli(): String {
+        return byId.keys.joinToString(separator = "\n\t", prefix = "\t", postfix = "")
     }
-
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
-    }
-
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

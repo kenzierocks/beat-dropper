@@ -23,38 +23,31 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.droppers
 
-import static org.junit.Assert.*;
+import net.octyl.beatdropper.SampleSelection
+import java.util.concurrent.TimeUnit
 
-import org.junit.Test;
-
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+object DropperUtils {
+    fun requestedTimeForOneBeat(bpm: Int): Long {
+        // have: beats per minute
+        // want: one beat's worth of samples
+        // want: time for one beat
+        // want: millis per beat
+        // -- get: minutes per beat
+        // double minPerBeat = 1.0 / bpm;
+        // -- get: mills per beat (fix multiplication for accuracy)
+        return (TimeUnit.MINUTES.toMillis(1) * 1.0 / bpm).toLong()
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    fun buildMeasure(measureSize: Int, samplesLength: Int): List<SampleSelection> {
+        return ArrayList<SampleSelection>(measureSize).apply {
+            val beatSize = samplesLength / measureSize
+            var i = 0
+            while (i < samplesLength) {
+                add(SampleSelection(i, i + beatSize))
+                i += beatSize
+            }
+        }
     }
-
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

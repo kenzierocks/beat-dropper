@@ -23,38 +23,38 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper
 
-import static org.junit.Assert.*;
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.cos
 
-import org.junit.Test;
+enum class StandardWindows : Window {
+    HANNING {
+        override fun apply(i: Int, nn: Int): Double {
+            val result = cache(i, nn)
+            return result
+                ?: cache(i, nn, 0.5 * (1.0 - cos(2.0 * Math.PI * i.toDouble() / (nn - 1).toDouble())))
+        }
+    },
+    HAMMING {
+        override fun apply(i: Int, nn: Int): Double {
+            val result = cache(i, nn)
+            return result
+                ?: cache(i, nn, 0.54 - 0.46 * cos(2.0 * Math.PI * i.toDouble() / (nn - 1).toDouble()))
+        }
+    };
 
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+    private val cache: MutableMap<Long, Double> = ConcurrentHashMap()
+    protected fun cache(i: Int, nn: Int): Double? {
+        return cache[key(i, nn)]
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    protected fun cache(i: Int, nn: Int, result: Double): Double {
+        cache[key(i, nn)] = result
+        return result
     }
 
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
+    private fun key(i: Int, nn: Int): Long {
+        return (i or (nn.toLong() shl Integer.SIZE).toInt()).toLong()
     }
-
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
 }

@@ -23,38 +23,38 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.util;
+package net.octyl.beatdropper.util
 
-import static org.junit.Assert.*;
+import joptsimple.ValueConverter
+import joptsimple.util.PathConverter
+import joptsimple.util.PathProperties
+import java.nio.channels.Channels
+import java.nio.channels.ReadableByteChannel
+import java.nio.file.StandardOpenOption
 
-import org.junit.Test;
+class ReadableByteChannelProviderConverter : ValueConverter<ChannelProvider<out ReadableByteChannel>> {
 
-public class ArrayUtilTest {
-
-    private void assertReverseResult(short[] input, short[] expected) {
-        short[] actual = ArrayUtil.reverse(input);
-        assertSame(actual, input);
-        assertArrayEquals(expected, actual);
+    companion object {
+        private val STANDARD_IN: ChannelProvider<ReadableByteChannel> =
+            object : ChannelProvider.Simple<ReadableByteChannel>("pipe:0") {
+                override fun openChannel(): ReadableByteChannel {
+                    return Channels.newChannel(System.`in`)
+                }
+            }
     }
 
-    @Test
-    public void emptyArrayReverses() {
-        assertReverseResult(new short[] {}, new short[] {});
+    private val delegate = PathConverter(PathProperties.READABLE)
+
+    override fun convert(value: String): ChannelProvider<out ReadableByteChannel> {
+        if (value == "-") {
+            return STANDARD_IN
+        }
+        val path = delegate.convert(value)
+        return ChannelProvider.forPath(path, StandardOpenOption.READ)
     }
 
-    @Test
-    public void oneElementArrayReverses() {
-        assertReverseResult(new short[] { 1 }, new short[] { 1 });
-    }
+    @Suppress("UNCHECKED_CAST")
+    override fun valueType() = ChannelProvider::class.java as Class<out ChannelProvider<ReadableByteChannel>>
 
-    @Test
-    public void twoElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2 }, new short[] { 2, 1 });
-    }
-
-    @Test
-    public void threeElementArrayReverses() {
-        assertReverseResult(new short[] { 1, 2, 3 }, new short[] { 3, 2, 1 });
-    }
-
+    override fun valuePattern() = "A path or `-` for stdin"
 }

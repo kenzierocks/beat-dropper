@@ -30,7 +30,7 @@ import java.io.IOException
 
 object Rethrow {
     @Throws(IOException::class)
-    fun rethrowIO(t: Throwable?): RuntimeException {
+    fun rethrowIO(t: Throwable): RuntimeException {
         Throwables.propagateIfPossible(t, IOException::class.java)
         Throwables.throwIfUnchecked(t)
         throw RuntimeException(t)

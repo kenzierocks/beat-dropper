@@ -28,6 +28,7 @@ package net.octyl.beatdropper.droppers
 import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -40,6 +41,8 @@ import java.util.ArrayList
 import java.util.stream.IntStream
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 
 /**
@@ -230,8 +233,8 @@ class WaltizifierV1 private constructor(private val bpm: Int, private val patter
         val n = v.size
         val result = DoubleArray(m + n - 1 - (startChop + endChop))
         for (k in startChop until result.size + startChop) {
-            val start = (k - n + 1).coerceAtLeast(0)
-            val end = (m - 1).coerceAtLeast(k)
+            val start = max(k - n + 1, 0)
+            val end = min(k, m - 1)
             val resIndex = k - startChop
             for (j in start..end) {
                 result[resIndex] += u[j] * v[k - j]

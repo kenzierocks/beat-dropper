@@ -138,7 +138,7 @@ class SelectionProcessor(
         } else {
             FFmpegOutputStream(
                 avcodec.AV_CODEC_ID_MP3,
-                "mpeg",
+                "mp3",
                 sampleRate.toInt(),
                 AvioCallbacks.forChannel(sink.openChannel())
             ).use { ffmpeg -> ByteStreams.copy(rawInputStream, ffmpeg) }

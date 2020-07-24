@@ -36,7 +36,7 @@ fun swrResampleSequence(
     input: AVFrame,
     output: AVFrame
 ): Sequence<AVFrame> = sequence {
-    val pts = input.pts()
+    val pts = swr_next_pts(swrCtx, input.pts())
     var currentFrame: AVFrame? = input
     while (true) {
         av_frame_make_writable(output)
@@ -46,7 +46,7 @@ fun swrResampleSequence(
         if (output.nb_samples() == 0) {
             break
         }
-        output.pts(swr_next_pts(swrCtx, pts))
+        output.pts(pts)
         yield(output)
     }
 }

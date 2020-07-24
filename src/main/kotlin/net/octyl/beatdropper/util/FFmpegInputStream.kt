@@ -26,7 +26,6 @@
 package net.octyl.beatdropper.util
 
 import com.google.common.base.Throwables
-import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.bytedeco.ffmpeg.avcodec.AVCodecContext
 import org.bytedeco.ffmpeg.avcodec.AVPacket
 import org.bytedeco.ffmpeg.avutil.AVDictionary
@@ -64,19 +63,19 @@ import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.ArrayDeque
-import java.util.Queue
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.locks.Lock
-import java.util.concurrent.locks.ReentrantLock
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.UnsupportedAudioFileException
-import kotlin.concurrent.withLock
 
 /**
  * An input stream based on piping another stream through FFmpeg.
  */
 class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream() {
+
+    companion object {
+        private val LOGGER = LoggerFactory.getLogger(FFmpegInputStream::class.java)
+    }
+
     private val closer = AutoCloser()
     private val ctx = closer.register(avformat_alloc_context(), { s -> avformat_free_context(s) })
         ?: error("Unable to allocate context")
@@ -87,12 +86,7 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
     private val audioStreamIndex: Int
     val audioFormat: AudioFormat
     private val swrCtx: SwrContext
-    private val frameQueue: Queue<ByteBuffer> = ArrayDeque(50)
-    private val frameSendLock: Lock = ReentrantLock()
-
-    // This condition is awaited by both sides whenever they cannot pull/push to the queue
-    private val waitingOtherSide = frameSendLock.newCondition()
-    private val finishedSending = AtomicBoolean()
+    private val frameSequence: Iterator<ByteBuffer>
     private val closed = AtomicBoolean()
     private var currentFrame: ByteBuffer? = null
     private fun closeSilently(cause: Throwable) {
@@ -185,21 +179,14 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
 
             codecCtx.pkt_timebase(audioStream.time_base())
 
-            val sendingThread = THREAD_FACTORY.newThread { decode() }
-            sendingThread.start()
-            closer.register(sendingThread, { t: Thread ->
-                t.interrupt()
-                if (t !== Thread.currentThread()) {
-                    t.join()
-                }
-            })
+            frameSequence = sequence<ByteBuffer> { decode() }.iterator()
         } catch (t: Throwable) {
             closeSilently(t)
             throw t
         }
     }
 
-    private fun decode() {
+    private suspend fun SequenceScope<ByteBuffer>.decode() {
         try {
             // packet reading loop
             readPacket@ while (av_read_frame(ctx, packet) >= 0) {
@@ -223,19 +210,7 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                                 MemoryUtil.memAddress(outputBuffer),
                                 outputBuffer.remaining().toLong()
                             )
-                            frameSendLock.withLock {
-                                // await close / frame queue poll
-                                while (true) {
-                                    if (closed.get()) {
-                                        return
-                                    }
-                                    if (frameQueue.offer(outputBuffer)) {
-                                        waitingOtherSide.signal()
-                                        break
-                                    }
-                                    waitingOtherSide.await()
-                                }
-                            }
+                            yield(outputBuffer)
                         }
                     }
                 } finally {
@@ -245,47 +220,23 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
         } catch (t: Throwable) {
             closeSilently(t)
             LOGGER.error("FFmpeg input stream crashed!", t)
-        } finally {
-            finishedSending.set(true)
-            // signal to the other side that we died, if needed
-            frameSendLock.lock()
-            try {
-                waitingOtherSide.signal()
-            } finally {
-                frameSendLock.unlock()
-            }
         }
     }
 
     private fun loadCurrentFrame(): ByteBuffer? {
-        return frameSendLock.withLock {
-            if (currentFrame == null || !currentFrame!!.hasRemaining()) {
-                if (currentFrame != null) {
-                    MemoryUtil.memFree(currentFrame)
-                    // paranoid, do not double-free
-                    currentFrame = null
-                }
-                try {
-                    var next: ByteBuffer?
-                    while (true) {
-                        if (finishedSending.get() || closed.get()) {
-                            next = null
-                            break
-                        }
-                        next = frameQueue.poll()
-                        if (next != null) {
-                            break
-                        }
-                        waitingOtherSide.await()
-                    }
-                    currentFrame = next
-                } catch (e: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw RuntimeException(e)
-                }
+        var localFrame = currentFrame
+        if (localFrame == null || !localFrame.hasRemaining()) {
+            if (localFrame != null) {
+                MemoryUtil.memFree(localFrame)
+                // paranoid, do not double-free
+                currentFrame = null
             }
-            currentFrame
+            localFrame = when {
+                frameSequence.hasNext() -> frameSequence.next()
+                else -> null
+            }
         }
+        return localFrame
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
@@ -317,22 +268,12 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
             Throwables.throwIfUnchecked(e)
             throw RuntimeException(e)
         } finally {
-            frameSendLock.withLock {
-                waitingOtherSide.signal()
-                if (currentFrame != null) {
-                    MemoryUtil.memFree(currentFrame)
-                    // paranoid, do not double-free
-                    currentFrame = null
-                }
+            val localFrame = currentFrame
+            if (localFrame != null) {
+                MemoryUtil.memFree(localFrame)
+                // paranoid, do not double-free
+                currentFrame = null
             }
         }
-    }
-
-    companion object {
-        private val LOGGER = LoggerFactory.getLogger(FFmpegInputStream::class.java)
-        private val THREAD_FACTORY = ThreadFactoryBuilder()
-            .setNameFormat("ffmpeg-decoder-%d")
-            .setDaemon(true)
-            .build()
     }
 }

@@ -26,7 +26,11 @@
 package net.octyl.beatdropper.util
 
 import org.bytedeco.ffmpeg.global.avutil.av_make_error_string
+import org.bytedeco.ffmpeg.global.avutil.av_opt_set_bin
 import org.bytedeco.javacpp.BytePointer
+import org.bytedeco.javacpp.IntPointer
+import org.bytedeco.javacpp.LongPointer
+import org.bytedeco.javacpp.Pointer
 
 private const val AV_ERROR_MAX_STRING_SIZE = 64L
 
@@ -39,3 +43,32 @@ fun avErr2Str(error: Int): String {
         ).string
     }
 }
+
+inline fun checkAv(error: Int, message: (error: String) -> String) {
+    if (error != 0) {
+        error(message(avErr2Str(error)))
+    }
+}
+
+/**
+ * Checked call to [org.bytedeco.ffmpeg.global.avutil.av_opt_set_bin].
+ */
+fun avOptSetList(obj: Pointer, name: String, ints: IntArray, search_flags: Int): Int {
+    val intsWithTerm = ints + -1
+    return IntPointer(*intsWithTerm).use {
+        av_opt_set_bin(obj, name, BytePointer(it), intsWithTerm.size * Int.SIZE_BYTES, search_flags)
+    }
+}
+
+/**
+ * Checked call to [org.bytedeco.ffmpeg.global.avutil.av_opt_set_bin].
+ */
+fun avOptSetList(obj: Pointer, name: String, longs: LongArray, search_flags: Int): Int {
+    val longsWithTerm = longs + -1
+    return LongPointer(*longsWithTerm).use {
+        av_opt_set_bin(obj, name, BytePointer(it), longsWithTerm.size * Long.SIZE_BYTES, search_flags)
+    }
+}
+
+// ffmpeg accepts channels by hex mask
+fun channelLayoutName(channelLayout: Long): String = "0x${channelLayout.toString(16)}"

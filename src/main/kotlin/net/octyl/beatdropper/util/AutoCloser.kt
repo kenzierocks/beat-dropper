@@ -62,6 +62,7 @@ class AutoCloser : AutoCloseable {
                 }
             }
         }
+        closeables.clear()
         if (rethrow != null) {
             throw rethrow
         }

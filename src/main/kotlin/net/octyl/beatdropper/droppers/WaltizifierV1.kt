@@ -28,16 +28,17 @@ package net.octyl.beatdropper.droppers
 import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.reduce
 import net.octyl.beatdropper.StandardWindows
 import net.octyl.beatdropper.Window
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.util.ArrayList
 import java.util.stream.IntStream
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -118,36 +119,39 @@ class WaltizifierV1 private constructor(private val bpm: Int, private val patter
         // Find the indexes in the original array, accounting for stretch
         val anawinIndex = interp1(synwinIndex, STRETCH_FACT)
 
-        val result = coroutineScope {
+        val result = flow {
             // fix input samples for easy use in loop:
             val paddedSamples = padSamples(samples, anawinIndex[anawinIndex.size - 1] + WIN_LEN + TOLERANCE)
             val bigSamples = paddedSamples
                 .map { BigDecimal.valueOf(it) }
                 .toTypedArray()
-            val tasks = ArrayList<Deferred<TaskResult>>()
             var delta = 0
-            for (i in synwinIndex.indices) {
-                val synStart = synwinIndex[i]
-                val anaStart = anawinIndex[i] + delta + TOLERANCE
-                tasks.add(async {
-                    processWindow(outputLength + 2 * WIN_LEN, synStart, anaStart, WINDOW[i], bigSamples)
-                })
-                if (i < synwinIndex.size - 1) {
-                    val natProg = paddedSamples.copyOfRange(
-                        anaStart + WIN_LEN_HALF,
-                        anaStart + WIN_LEN_HALF + WIN_LEN
-                    )
-                    val nextAna = paddedSamples.copyOfRange(
-                        anawinIndex[i + 1] - TOLERANCE,
-                        anawinIndex[i + 1] + WIN_LEN + TOLERANCE
-                    )
-                    val cc = crossCorrelate(nextAna, natProg, WIN_LEN)
-                    val maxIndex = maxIndex(cc)
-                    delta = 1 - maxIndex
+            coroutineScope {
+                for (i in synwinIndex.indices) {
+                    val synStart = synwinIndex[i]
+                    val anaStart = anawinIndex[i] + delta + TOLERANCE
+                    emit(async {
+                        processWindow(outputLength + 2 * WIN_LEN, synStart, anaStart, WINDOW[i], bigSamples)
+                    })
+                    if (i < synwinIndex.size - 1) {
+                        val natProg = paddedSamples.copyOfRange(
+                            anaStart + WIN_LEN_HALF,
+                            anaStart + WIN_LEN_HALF + WIN_LEN
+                        )
+                        val nextAna = paddedSamples.copyOfRange(
+                            anawinIndex[i + 1] - TOLERANCE,
+                            anawinIndex[i + 1] + WIN_LEN + TOLERANCE
+                        )
+                        val cc = crossCorrelate(nextAna, natProg, WIN_LEN)
+                        val maxIndex = maxIndex(cc)
+                        delta = 1 - maxIndex
+                    }
                 }
             }
-            tasks.awaitAll().reduce { acc, taskResult -> acc.add(taskResult) }
         }
+            .buffer(Channel.UNLIMITED)
+            .map { it.await() }
+            .reduce { acc, taskResult -> acc.add(taskResult) }
         var output = result.output
         val olWins = result.olWins
 

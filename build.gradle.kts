@@ -21,6 +21,13 @@ inciseBlue {
     }
 }
 
+kotlin.target.compilations.configureEach {
+    kotlinOptions {
+        jvmTarget = "1.8"
+        freeCompilerArgs = listOf("-Xopt-in=kotlin.RequiresOptIn")
+    }
+}
+
 application.mainClassName = "net.octyl.beatdropper.BeatDrop"
 
 dependencies {

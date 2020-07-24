@@ -28,7 +28,6 @@ package net.octyl.beatdropper
 import com.google.common.base.Preconditions
 import com.google.common.io.ByteStreams
 import com.google.common.io.LittleEndianDataInputStream
-import com.google.common.io.LittleEndianDataOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -36,11 +35,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import net.octyl.beatdropper.droppers.SampleModifier
@@ -48,19 +45,15 @@ import net.octyl.beatdropper.util.AvioCallbacks
 import net.octyl.beatdropper.util.ChannelProvider
 import net.octyl.beatdropper.util.FFmpegInputStream
 import net.octyl.beatdropper.util.FFmpegOutputStream
+import net.octyl.beatdropper.util.FlowInputStream
 import org.bytedeco.ffmpeg.global.avcodec
 import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
 import java.io.DataInput
 import java.io.DataInputStream
-import java.io.DataOutput
-import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
-import java.io.OutputStream
-import java.io.PipedInputStream
-import java.io.PipedOutputStream
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.Channels
 import java.nio.channels.ReadableByteChannel
@@ -77,19 +70,6 @@ class SelectionProcessor(
     private val modifier: SampleModifier,
     private val raw: Boolean
 ) {
-    private val rawOutputStream: OutputStream
-    private val rawInputStream: InputStream
-
-    init {
-        val pipedOutputStream = PipedOutputStream()
-        rawOutputStream = BufferedOutputStream(pipedOutputStream)
-        try {
-            rawInputStream = PipedInputStream(pipedOutputStream)
-        } catch (e: IOException) {
-            throw IllegalStateException(e)
-        }
-    }
-
     @Throws(IOException::class, UnsupportedAudioFileException::class)
     fun process() {
         openAudioInput().use { stream ->
@@ -98,11 +78,11 @@ class SelectionProcessor(
             System.err.println("Loaded audio as $format (possibly via FFmpeg resampling)")
             runBlocking(Dispatchers.Default) {
                 val flow = processAudioStream(stream)
-                launch {
-                    gather(stream.format.isBigEndian, flow)
-                }
+                val byteFlow = gather(stream.format.isBigEndian, flow)
                 withContext(Dispatchers.IO) {
-                    writeToSink(stream.format.sampleRate)
+                    FlowInputStream(byteFlow).buffered().use {
+                        writeToSink(it, stream.format.sampleRate)
+                    }
                 }
             }
         }
@@ -123,33 +103,29 @@ class SelectionProcessor(
     }
 
     @Throws(IOException::class)
-    private fun writeToSink(sampleRate: Float) {
-        rawInputStream.use {
-            if (raw) {
-                val fmt = AudioFormat(sampleRate, 16, 2, true,
-                    ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN
-                )
-                AudioInputStream(
-                    rawInputStream,
-                    fmt,
-                    AudioSystem.NOT_SPECIFIED.toLong()
-                ).use { audio ->
-                    Channels.newOutputStream(sink.openChannel()).use { output ->
-                        AudioSystem.write(audio, AudioFileFormat.Type.AU, output)
-                    }
-                }
-            } else {
-                FFmpegOutputStream(
-                    avcodec.AV_CODEC_ID_MP3,
-                    "mp3",
-                    sampleRate.toInt(),
-                    AvioCallbacks.forChannel(sink.openChannel())
-                ).use { ffmpeg ->
-                    ByteStreams.copy(rawInputStream, ffmpeg)
+    private fun writeToSink(inputStream: InputStream, sampleRate: Float) {
+        if (raw) {
+            val fmt = AudioFormat(sampleRate, 16, 2, true,
+                ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN
+            )
+            AudioInputStream(
+                inputStream,
+                fmt,
+                AudioSystem.NOT_SPECIFIED.toLong()
+            ).use { audio ->
+                Channels.newOutputStream(sink.openChannel()).use { output ->
+                    AudioSystem.write(audio, AudioFileFormat.Type.AU, output)
                 }
             }
-
-            Unit
+        } else {
+            FFmpegOutputStream(
+                avcodec.AV_CODEC_ID_MP3,
+                "mp3",
+                sampleRate.toInt(),
+                AvioCallbacks.forChannel(sink.openChannel())
+            ).use { ffmpeg ->
+                ByteStreams.copy(inputStream, ffmpeg)
+            }
         }
     }
 
@@ -207,27 +183,26 @@ class SelectionProcessor(
         }
     }
 
-    private suspend fun gather(bigEndian: Boolean, flow: Flow<ChannelContent<ShortArray>>) {
-        rawOutputStream.use {
-            val dos: DataOutput = when {
-                bigEndian -> DataOutputStream(rawOutputStream)
-                else -> LittleEndianDataOutputStream(rawOutputStream)
-            }
-            flow.collect { (left, right) ->
-                sendChannels(left, right, dos)
-            }
+    private fun gather(bigEndian: Boolean, flow: Flow<ChannelContent<ShortArray>>): Flow<ByteBuffer> {
+        val order = when {
+            bigEndian -> ByteOrder.BIG_ENDIAN
+            else -> ByteOrder.LITTLE_ENDIAN
+        }
+        return flow.map { (left, right) ->
+            encodeChannels(order, left, right)
         }
     }
 
-    private suspend fun sendChannels(left: ShortArray, right: ShortArray, dos: DataOutput) {
+    private fun encodeChannels(order: ByteOrder, left: ShortArray, right: ShortArray): ByteBuffer {
         check(left.size == right.size) {
             "channel sizes should be equal, ${left.size} != ${right.size}"
         }
-        withContext(Dispatchers.IO) {
-            for ((l, r) in left.zip(right)) {
-                dos.writeShort(l.toInt())
-                dos.writeShort(r.toInt())
-            }
+        val buffer = ByteBuffer.allocate((left.size + right.size) * Short.SIZE_BYTES).order(order)
+        for ((l, r) in left.zip(right)) {
+            buffer.putShort(l)
+            buffer.putShort(r)
         }
+        buffer.flip()
+        return buffer
     }
 }

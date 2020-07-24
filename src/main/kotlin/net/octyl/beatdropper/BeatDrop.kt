@@ -84,9 +84,9 @@ object BeatDrop {
         if (sink == null) {
             val sourceName = source.identifier
             val sinkTarget = if (sourceName.startsWith("file:"))
-                renameFile(Paths.get(sourceName.replaceFirst("file:".toRegex(), "")), selector)
+                renameFile(Paths.get(sourceName.replaceFirst("file:".toRegex(), "")), raw, selector)
             else
-                Paths.get(renameFile(sourceName.replace('/', '_'), selector))
+                Paths.get(renameFile(sourceName.replace('/', '_'), raw, selector))
             sink = ChannelProvider.forPath(
                 sinkTarget,
                 CREATE, WRITE, TRUNCATE_EXISTING
@@ -109,7 +109,7 @@ object BeatDrop {
         return options.specs().stream().anyMatch { obj: OptionSpec<*> -> obj.isForHelp }
     }
 
-    private fun executeBeatDropping(sourceName: String?, processor: SelectionProcessor) {
+    private fun executeBeatDropping(sourceName: String, processor: SelectionProcessor) {
         try {
             processor.process()
         } catch (e: IOException) {
@@ -120,32 +120,32 @@ object BeatDrop {
         }
     }
 
-    private fun addSourceOpt(parser: OptionParser?): NonOptionArgumentSpec<ChannelProvider<out ReadableByteChannel>> {
-        return parser!!.nonOptions("Input source.")
+    private fun addSourceOpt(parser: OptionParser): NonOptionArgumentSpec<ChannelProvider<out ReadableByteChannel>> {
+        return parser.nonOptions("Input source.")
             .withValuesConvertedBy(ReadableByteChannelProviderConverter())
     }
 
-    private fun addSinkOpt(parser: OptionParser?): ArgumentAcceptingOptionSpec<ChannelProvider<out WritableByteChannel>> {
-        return parser!!.acceptsAll(listOf("o", "output"), "Output sink.")
+    private fun addSinkOpt(parser: OptionParser): ArgumentAcceptingOptionSpec<ChannelProvider<out WritableByteChannel>> {
+        return parser.acceptsAll(listOf("o", "output"), "Output sink.")
             .withRequiredArg()
             .withValuesConvertedBy(WritableByteChannelProviderConverter())
     }
 
-    private fun addRawFlag(parser: OptionParser?): OptionSpec<Void> {
-        return parser!!.acceptsAll(listOf("r", "raw"), "Enable raw output")
+    private fun addRawFlag(parser: OptionParser): OptionSpec<Void> {
+        return parser.acceptsAll(listOf("r", "raw"), "Enable raw output")
     }
 
-    private fun renameFile(file: Path, modifier: SampleModifier?): Path {
-        val newFileName = renameFile(file.fileName.toString(), modifier)
+    private fun renameFile(file: Path, raw: Boolean, modifier: SampleModifier): Path {
+        val newFileName = renameFile(file.fileName.toString(), raw, modifier)
         return file.resolveSibling(newFileName)
     }
 
-    private fun renameFile(fileName: String, modifier: SampleModifier?): String {
-        val modStr = " [" + modifier!!.describeModification() + "]"
-        val lastDot = fileName.lastIndexOf('.')
-        return if (lastDot == -1) {
-            fileName + modStr
-        } else fileName.substring(0, lastDot) + modStr + fileName.substring(lastDot)
+    private fun renameFile(fileName: String, raw: Boolean, modifier: SampleModifier): String {
+        val ext = when {
+            raw -> "au"
+            else -> "mp3"
+        }
+        return "${fileName.substringBefore('.')} [${modifier.describeModification()}].$ext"
     }
 
     private fun printHelp() {

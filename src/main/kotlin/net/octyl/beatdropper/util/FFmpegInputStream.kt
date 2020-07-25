@@ -51,12 +51,7 @@ import org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO
 import org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16
 import org.bytedeco.ffmpeg.global.avutil.av_frame_alloc
 import org.bytedeco.ffmpeg.global.avutil.av_frame_free
-import org.bytedeco.ffmpeg.global.avutil.av_opt_set_int
-import org.bytedeco.ffmpeg.global.swresample.swr_alloc
-import org.bytedeco.ffmpeg.global.swresample.swr_free
-import org.bytedeco.ffmpeg.global.swresample.swr_init
 import org.bytedeco.ffmpeg.presets.avutil
-import org.bytedeco.ffmpeg.swresample.SwrContext
 import org.lwjgl.system.MemoryUtil
 import org.slf4j.LoggerFactory
 import java.io.IOException
@@ -81,11 +76,10 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
         ?: error("Unable to allocate context")
     private val codecCtx: AVCodecContext
     private val frame: AVFrame
-    private val targetFrame: AVFrame
     private val packet: AVPacket
     private val audioStreamIndex: Int
     val audioFormat: AudioFormat
-    private val swrCtx: SwrContext
+    private val resampler: Resampler
     private val frameSequence: Iterator<ByteBuffer>
     private val closed = AtomicBoolean()
     private var currentFrame: ByteBuffer? = null
@@ -130,19 +124,20 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                 ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN
             )
 
-            swrCtx = closer.register(swr_alloc(), { s -> swr_free(s) })
-                ?: error("Unable to allocate swr context")
-
-            av_opt_set_int(swrCtx, "in_channel_layout", audioStream.codecpar().channel_layout(), 0)
-            av_opt_set_int(swrCtx, "in_sample_rate", audioStream.codecpar().sample_rate().toLong(), 0)
-            av_opt_set_int(swrCtx, "in_sample_fmt", audioStream.codecpar().format().toLong(), 0)
-
-            av_opt_set_int(swrCtx, "out_channel_layout", AV_CH_LAYOUT_STEREO, 0)
-            av_opt_set_int(swrCtx, "out_sample_rate", audioStream.codecpar().sample_rate().toLong(), 0)
-            av_opt_set_int(swrCtx, "out_sample_fmt", AV_SAMPLE_FMT_S16.toLong(), 0)
-
-            error = swr_init(swrCtx)
-            check(error == 0) { "Error initializing swr: " + avErr2Str(error) }
+            resampler = closer.register(Resampler(
+                Format(
+                    channelLayout = audioStream.codecpar().channel_layout(),
+                    sampleFormat = audioStream.codecpar().format(),
+                    timeBase = audioStream.time_base(),
+                    sampleRate = audioStream.codecpar().sample_rate()
+                ),
+                Format(
+                    channelLayout = AV_CH_LAYOUT_STEREO,
+                    sampleFormat = AV_SAMPLE_FMT_S16,
+                    timeBase = audioStream.time_base(),
+                    sampleRate = audioStream.codecpar().sample_rate()
+                )
+            ))
 
             val decoder = avcodec_find_decoder(audioStream.codecpar().codec_id())
                 ?: throw UnsupportedAudioFileException("Not decode-able by FFmpeg")
@@ -162,15 +157,6 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                 av_frame_alloc(),
                 { frame -> av_frame_free(frame) }
             ) ?: error("Unable to allocate frame")
-
-            targetFrame = closer.register(
-                av_frame_alloc(),
-                { frame -> av_frame_free(frame) }
-            ) ?: error("Unable to allocate target frame")
-            targetFrame
-                .channel_layout(AV_CH_LAYOUT_STEREO)
-                .sample_rate(audioStream.codecpar().sample_rate())
-                .format(AV_SAMPLE_FMT_S16)
 
             packet = closer.register(
                 av_packet_alloc(),
@@ -203,7 +189,7 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                             continue@readPacket
                         }
                         check(error == 0) { "Error getting frame from decoder: " + avErr2Str(error) }
-                        for (next in swrResampleSequence(swrCtx, frame, targetFrame)) {
+                        for (next in resampler.pushFrame(frame)) {
                             val outputBuffer = MemoryUtil.memAlloc(next.nb_samples() * 4)
                             MemoryUtil.memCopy(
                                 next.data(0).address(),
@@ -224,6 +210,9 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
     }
 
     private fun loadCurrentFrame(): ByteBuffer? {
+        if (closed.get()) {
+            return null
+        }
         var localFrame = currentFrame
         if (localFrame == null || !localFrame.hasRemaining()) {
             if (localFrame != null) {

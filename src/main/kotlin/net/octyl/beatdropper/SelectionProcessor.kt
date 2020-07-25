@@ -63,6 +63,7 @@ import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.UnsupportedAudioFileException
+import kotlin.coroutines.ContinuationInterceptor
 
 class SelectionProcessor(
     private val source: ChannelProvider<out ReadableByteChannel>,
@@ -105,17 +106,13 @@ class SelectionProcessor(
     @Throws(IOException::class)
     private fun writeToSink(inputStream: InputStream, sampleRate: Float) {
         if (raw) {
-            val fmt = AudioFormat(sampleRate, 16, 2, true,
-                ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN
-            )
-            AudioInputStream(
-                inputStream,
-                fmt,
-                AudioSystem.NOT_SPECIFIED.toLong()
-            ).use { audio ->
-                Channels.newOutputStream(sink.openChannel()).use { output ->
-                    AudioSystem.write(audio, AudioFileFormat.Type.AU, output)
-                }
+            FFmpegOutputStream(
+                avcodec.AV_CODEC_ID_FLAC,
+                "flac",
+                sampleRate.toInt(),
+                AvioCallbacks.forChannel(sink.openChannel())
+            ).use { ffmpeg ->
+                ByteStreams.copy(inputStream, ffmpeg)
             }
         } else {
             FFmpegOutputStream(
@@ -141,6 +138,9 @@ class SelectionProcessor(
     @Throws(IOException::class)
     private fun processAudioStream(stream: AudioInputStream) = flow {
         coroutineScope {
+            assert(coroutineContext[ContinuationInterceptor] == Dispatchers.IO) {
+                "Not on IO threads!"
+            }
             val bufferedStream = BufferedInputStream(stream)
             val dis: DataInput = when {
                 stream.format.isBigEndian -> DataInputStream(bufferedStream)

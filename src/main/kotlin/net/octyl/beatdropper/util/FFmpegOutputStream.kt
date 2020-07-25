@@ -54,6 +54,7 @@ import org.bytedeco.ffmpeg.global.avformat.avformat_new_stream
 import org.bytedeco.ffmpeg.global.avformat.avformat_write_header
 import org.bytedeco.ffmpeg.global.avutil.AVERROR_EOF
 import org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO
+import org.bytedeco.ffmpeg.global.avutil.AV_OPT_SEARCH_CHILDREN
 import org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16
 import org.bytedeco.ffmpeg.global.avutil.FF_QP2LAMBDA
 import org.bytedeco.ffmpeg.global.avutil.av_frame_alloc
@@ -63,6 +64,7 @@ import org.bytedeco.ffmpeg.global.avutil.av_frame_make_writable
 import org.bytedeco.ffmpeg.global.avutil.av_get_bytes_per_sample
 import org.bytedeco.ffmpeg.global.avutil.av_get_planar_sample_fmt
 import org.bytedeco.ffmpeg.global.avutil.av_make_q
+import org.bytedeco.ffmpeg.global.avutil.av_opt_set_int
 import org.bytedeco.ffmpeg.presets.avutil
 import org.lwjgl.system.MemoryUtil
 import java.io.IOException
@@ -96,11 +98,18 @@ class FFmpegOutputStream(
         var error = avformat_alloc_output_context2(ctx, null, containerName, null)
         check(error == 0) { "Error allocating output context: " + avErr2Str(error) }
         closer.register(ctx, { s -> avformat_free_context(s) })
+
         val avioCtx = closer.register(avioCallbacks).allocateContext(4096, true)
             ?: error("Unable to allocate IO context")
         closer.register(avioCtx)
         ctx.pb(avioCtx)
+
         try {
+            if (avioCtx.seekable() == 0) {
+                // Disable a warning from FLAC encoder, we don't care.
+                av_opt_set_int(ctx, "write_header", 0, AV_OPT_SEARCH_CHILDREN)
+            }
+
             val codec = avcodec_find_encoder(codecId)
                 ?: error("Could not find encoder for " + avcodec_get_name(codecId))
 

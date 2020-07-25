@@ -34,8 +34,8 @@ import java.nio.file.Path
 /**
  * Provider of a [Channel].
  */
-interface ChannelProvider<C : Channel?> {
-    abstract class Simple<C : Channel?> protected constructor(override val identifier: String) : ChannelProvider<C>
+interface ChannelProvider<C : Channel> {
+    abstract class Simple<C : Channel> protected constructor(override val identifier: String) : ChannelProvider<C>
 
     /**
      * An easy way to identify the source of the byte channel.

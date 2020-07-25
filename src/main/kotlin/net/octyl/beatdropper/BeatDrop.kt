@@ -142,7 +142,7 @@ object BeatDrop {
 
     private fun renameFile(fileName: String, raw: Boolean, modifier: SampleModifier): String {
         val ext = when {
-            raw -> "au"
+            raw -> "flac"
             else -> "mp3"
         }
         return "${fileName.substringBefore('.')} [${modifier.describeModification()}].$ext"

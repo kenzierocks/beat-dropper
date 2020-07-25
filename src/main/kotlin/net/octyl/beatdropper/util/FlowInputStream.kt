@@ -9,6 +9,7 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.receiveOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.produceIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import java.io.InputStream
 import java.nio.ByteBuffer
@@ -22,6 +23,9 @@ class FlowInputStream(flow: Flow<ByteBuffer>) : InputStream() {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun fillIfNeeded(): ByteBuffer? {
+        if (!scope.isActive) {
+            return null
+        }
         var local = buffer
         if (local == null || !local.hasRemaining()) {
             buffer = runBlocking { channel.receiveOrNull() }

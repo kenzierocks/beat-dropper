@@ -135,8 +135,8 @@ object BeatDrop {
             For dropper options, see beat-dropper [dropper] --help.
             
             <dropper> may be any one of the following:
-            $formattedDroppers
             """.trimIndent()
+                + "\n" + formattedDroppers
         )
     }
 }

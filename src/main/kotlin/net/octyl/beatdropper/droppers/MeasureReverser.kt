@@ -29,6 +29,8 @@ import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
 import net.octyl.beatdropper.SampleSelection
+import net.octyl.beatdropper.util.Format
+
 /**
  * Reverses each measure.
  */
@@ -37,7 +39,7 @@ class MeasureReverser private constructor(private val bpm: Int, private val meas
     class Factory : FactoryBase("reverse-measure") {
         private val bpm: ArgumentAcceptingOptionSpec<Int> = SharedOptions.bpm(parser)
         private val measureSize: ArgumentAcceptingOptionSpec<Int> = SharedOptions.measureSize(parser)
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return MeasureReverser(bpm.value(options), measureSize.value(options))
         }
     }

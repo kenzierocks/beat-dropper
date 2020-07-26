@@ -28,6 +28,7 @@ package net.octyl.beatdropper.droppers
 import com.google.auto.service.AutoService
 import joptsimple.OptionSet
 import net.octyl.beatdropper.SampleSelection
+import net.octyl.beatdropper.util.Format
 import java.util.SortedSet
 
 /**
@@ -36,7 +37,7 @@ import java.util.SortedSet
 class IdentitySelector private constructor() : SampleSelector() {
     @AutoService(SampleModifierFactory::class)
     class Factory : FactoryBase("identity") {
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return IdentitySelector()
         }
     }

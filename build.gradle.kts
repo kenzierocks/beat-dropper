@@ -28,6 +28,10 @@ kotlin.target.compilations.configureEach {
     }
 }
 
+kapt {
+    correctErrorTypes = true
+}
+
 application.mainClassName = "net.octyl.beatdropper.BeatDrop"
 
 dependencies {

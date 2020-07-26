@@ -28,10 +28,12 @@ package net.octyl.beatdropper
 import com.google.common.base.Preconditions
 import com.google.common.io.ByteStreams
 import com.google.common.io.LittleEndianDataInputStream
+import joptsimple.OptionSet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
@@ -41,12 +43,16 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import net.octyl.beatdropper.droppers.SampleModifier
+import net.octyl.beatdropper.droppers.SampleModifierFactory
 import net.octyl.beatdropper.util.AvioCallbacks
 import net.octyl.beatdropper.util.ChannelProvider
 import net.octyl.beatdropper.util.FFmpegInputStream
 import net.octyl.beatdropper.util.FFmpegOutputStream
 import net.octyl.beatdropper.util.FlowInputStream
+import net.octyl.beatdropper.util.Format
+import net.octyl.beatdropper.util.internalFormat
 import org.bytedeco.ffmpeg.global.avcodec
+import org.bytedeco.ffmpeg.global.avutil
 import java.io.BufferedInputStream
 import java.io.DataInput
 import java.io.DataInputStream
@@ -55,11 +61,11 @@ import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.channels.Channels
 import java.nio.channels.ReadableByteChannel
 import java.nio.channels.WritableByteChannel
-import javax.sound.sampled.AudioFileFormat
-import javax.sound.sampled.AudioFormat
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
 import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.UnsupportedAudioFileException
@@ -67,23 +73,64 @@ import kotlin.coroutines.ContinuationInterceptor
 
 class SelectionProcessor(
     private val source: ChannelProvider<out ReadableByteChannel>,
-    private val sink: ChannelProvider<out WritableByteChannel>,
-    private val modifier: SampleModifier,
+    private val sink: ChannelProvider<out WritableByteChannel>?,
+    private val modifierOptionSet: OptionSet,
+    private val modifierFactory: SampleModifierFactory,
     private val raw: Boolean
 ) {
+
+    private fun loadSink(modifier: SampleModifier): ChannelProvider<out WritableByteChannel> {
+        return sink ?: {
+            val sourceName = source.identifier
+            val sinkTarget = when {
+                sourceName.startsWith("file:") ->
+                    renameFile(Paths.get(sourceName.replaceFirst("file:".toRegex(), "")), raw, modifier)
+                else ->
+                    Paths.get(renameFile(sourceName.replace('/', '_'), raw, modifier))
+            }
+
+            ChannelProvider.forPath(
+                sinkTarget,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
+            )
+        }()
+    }
+
+    private fun renameFile(file: Path, raw: Boolean, modifier: SampleModifier): Path {
+        val newFileName = renameFile(file.fileName.toString(), raw, modifier)
+        return file.resolveSibling(newFileName)
+    }
+
+    private fun renameFile(fileName: String, raw: Boolean, modifier: SampleModifier): String {
+        val ext = when {
+            raw -> "flac"
+            else -> "mp3"
+        }
+        return "${fileName.substringBefore('.')} [${modifier.describeModification()}].$ext"
+    }
+
     @Throws(IOException::class, UnsupportedAudioFileException::class)
     fun process() {
         openAudioInput().use { stream ->
-            val format = stream.format
-            Preconditions.checkState(format.channels == 2, "Must be 2 channel format")
-            System.err.println("Loaded audio as $format (possibly via FFmpeg resampling)")
+            Preconditions.checkState(stream.format.channels == 2, "Must be 2 channel format")
+            System.err.println("Loaded audio as ${stream.format} (possibly via FFmpeg resampling)")
             runBlocking(Dispatchers.Default) {
-                val flow = processAudioStream(stream)
-                val byteFlow = gather(stream.format.isBigEndian, flow)
-                withContext(Dispatchers.IO) {
-                    FlowInputStream(byteFlow).buffered().use {
-                        writeToSink(it, stream.format.sampleRate)
+                val format = internalFormat(stream.format.sampleRate.toInt())
+                val modifier = modifierFactory.create(
+                    // we pipe mono data to the modifiers
+                    format.copy(channelLayout = avutil.AV_CH_LAYOUT_MONO),
+                    modifierOptionSet
+                )
+                try {
+                    val flow = processAudioStream(stream, modifier, format)
+                    val byteFlow = gather(stream.format.isBigEndian, flow)
+                    withContext(Dispatchers.IO) {
+                        FlowInputStream(byteFlow).buffered().use {
+                            writeToSink(it, modifier, format.sampleRate)
+                        }
                     }
+                } finally {
+                    (modifier as? AutoCloseable)?.close()
                 }
             }
         }
@@ -104,12 +151,13 @@ class SelectionProcessor(
     }
 
     @Throws(IOException::class)
-    private fun writeToSink(inputStream: InputStream, sampleRate: Float) {
+    private fun writeToSink(inputStream: InputStream, modifier: SampleModifier, sampleRate: Int) {
+        val sink = loadSink(modifier)
         if (raw) {
             FFmpegOutputStream(
                 avcodec.AV_CODEC_ID_FLAC,
                 "flac",
-                sampleRate.toInt(),
+                sampleRate,
                 AvioCallbacks.forChannel(sink.openChannel())
             ).use { ffmpeg ->
                 ByteStreams.copy(inputStream, ffmpeg)
@@ -118,7 +166,7 @@ class SelectionProcessor(
             FFmpegOutputStream(
                 avcodec.AV_CODEC_ID_MP3,
                 "mp3",
-                sampleRate.toInt(),
+                sampleRate,
                 AvioCallbacks.forChannel(sink.openChannel())
             ).use { ffmpeg ->
                 ByteStreams.copy(inputStream, ffmpeg)
@@ -136,7 +184,9 @@ class SelectionProcessor(
     }
 
     @Throws(IOException::class)
-    private fun processAudioStream(stream: AudioInputStream) = flow {
+    private fun processAudioStream(stream: AudioInputStream,
+                                   modifier: SampleModifier,
+                                   format: Format) = flow {
         coroutineScope {
             assert(coroutineContext[ContinuationInterceptor] == Dispatchers.IO) {
                 "Not on IO threads!"
@@ -146,7 +196,7 @@ class SelectionProcessor(
                 stream.format.isBigEndian -> DataInputStream(bufferedStream)
                 else -> LittleEndianDataInputStream(bufferedStream)
             }
-            val sampleAmount = (modifier.requestedTimeLength() * stream.format.frameRate / 1000).toInt()
+            val sampleAmount = modifier.sampleArraySize(format)
             val left = ShortArray(sampleAmount)
             val right = ShortArray(sampleAmount)
             var reading = true
@@ -163,16 +213,17 @@ class SelectionProcessor(
                     }
                     read++
                 }
-                emit(modifyAsync(ChannelContent(left, right), read, numBatches))
+                emit(modifyAsync(modifier, ChannelContent(left, right), read, numBatches))
                 numBatches++
             }
         }
     }
         .flowOn(Dispatchers.IO)
-        .buffer()
+        .buffer(Channel.UNLIMITED)
         .map { it.await() }
 
-    private fun CoroutineScope.modifyAsync(samples: ChannelContent<ShortArray>,
+    private fun CoroutineScope.modifyAsync(modifier: SampleModifier,
+                                           samples: ChannelContent<ShortArray>,
                                            read: Int,
                                            batchNum: Int): Deferred<ChannelContent<ShortArray>> {
         val buffer = samples.map { it.copyOf(read) }

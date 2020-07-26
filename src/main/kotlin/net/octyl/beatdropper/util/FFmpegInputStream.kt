@@ -189,23 +189,29 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                             continue@readPacket
                         }
                         check(error == 0) { "Error getting frame from decoder: " + avErr2Str(error) }
-                        for (next in resampler.pushFrame(frame)) {
-                            val outputBuffer = MemoryUtil.memAlloc(next.nb_samples() * 4)
-                            MemoryUtil.memCopy(
-                                next.data(0).address(),
-                                MemoryUtil.memAddress(outputBuffer),
-                                outputBuffer.remaining().toLong()
-                            )
-                            yield(outputBuffer)
-                        }
+                        val pushFrame = resampler.pushFrame(frame)
+                        handleResultFrames(pushFrame)
                     }
                 } finally {
                     av_packet_unref(packet)
                 }
             }
+            handleResultFrames(resampler.pushFinalFrame(0L))
         } catch (t: Throwable) {
             closeSilently(t)
             LOGGER.error("FFmpeg input stream crashed!", t)
+        }
+    }
+
+    private suspend fun SequenceScope<ByteBuffer>.handleResultFrames(pushFrame: Sequence<AVFrame>) {
+        for (next in pushFrame) {
+            val outputBuffer = MemoryUtil.memAlloc(next.nb_samples() * 4)
+            MemoryUtil.memCopy(
+                next.data(0).address(),
+                MemoryUtil.memAddress(outputBuffer),
+                outputBuffer.remaining().toLong()
+            )
+            yield(outputBuffer)
         }
     }
 

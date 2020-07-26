@@ -23,14 +23,30 @@
  * THE SOFTWARE.
  */
 
-package net.octyl.beatdropper.droppers
+package net.octyl.beatdropper.util
 
-import joptsimple.OptionParser
-import joptsimple.OptionSet
-import net.octyl.beatdropper.util.Format
+import org.bytedeco.ffmpeg.global.avfilter.av_buffersink_set_frame_size
+import org.bytedeco.ffmpeg.global.avutil.AV_OPT_SEARCH_CHILDREN
+import org.bytedeco.ffmpeg.global.avutil.av_opt_set_double
+import org.bytedeco.ffmpeg.global.avutil.av_opt_set_int
 
-interface SampleModifierFactory {
-    val id: String
-    val parser: OptionParser
-    fun create(format: Format, options: OptionSet): SampleModifier
+class Stretcher(
+    inputFormat: Format,
+    outputFormat: Format,
+    factor: Double,
+    sizeOfInput: Int
+) : FilterGraph(inputFormat, outputFormat,
+    filters = listOf(
+        // TODO We might consider switching to rubberband
+        Filter("atempo", "tempo") { ctx ->
+            av_opt_set_double(ctx, "tempo", factor, AV_OPT_SEARCH_CHILDREN)
+        },
+        Filter("asetnsamples", "samples") { ctx ->
+            av_opt_set_int(ctx, "nb_out_samples", (sizeOfInput / factor).toLong(), AV_OPT_SEARCH_CHILDREN)
+        }
+    )
+) {
+    init {
+        av_buffersink_set_frame_size(bufferSinkCtx, (sizeOfInput / factor).toInt())
+    }
 }

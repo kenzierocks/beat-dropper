@@ -29,6 +29,7 @@ import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
 import net.octyl.beatdropper.SampleSelection
+import net.octyl.beatdropper.util.Format
 import java.util.SortedSet
 
 /**
@@ -42,7 +43,7 @@ class PercentageBeatDropper private constructor(private val bpm: Int, private va
         private val percentage: ArgumentAcceptingOptionSpec<Double> =
             SharedOptions.percentage(parser, "Percentage of the beat to drop.")
 
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return PercentageBeatDropper(bpm.value(options), percentage.value(options) / 100.0)
         }
     }

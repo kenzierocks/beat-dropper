@@ -25,6 +25,8 @@
 
 package net.octyl.beatdropper.droppers
 
+import net.octyl.beatdropper.util.Format
+
 
 interface SampleModifier {
     /**
@@ -34,10 +36,14 @@ interface SampleModifier {
 
     /**
      * The amount of time, in milliseconds, that the samples provided to
-     * [.modifySamples] should represent.
+     * [modifySamples] should represent.
      *
      * @return the number of milliseconds that the samples should represent
      */
     fun requestedTimeLength(): Long
+
+    fun sampleArraySize(format: Format): Int =
+        (requestedTimeLength() * format.sampleRate / 1000).toInt()
+
     fun describeModification(): String
 }

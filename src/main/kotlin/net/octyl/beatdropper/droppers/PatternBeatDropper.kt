@@ -29,6 +29,7 @@ import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
 import net.octyl.beatdropper.SampleSelection
+import net.octyl.beatdropper.util.Format
 import java.util.SortedSet
 
 /**
@@ -42,7 +43,7 @@ class PatternBeatDropper private constructor(private val bpm: Int, private val p
     class Factory : FactoryBase("pattern") {
         private val bpm: ArgumentAcceptingOptionSpec<Int> = SharedOptions.bpm(parser)
         private val pattern: ArgumentAcceptingOptionSpec<String> = SharedOptions.pattern(parser, "beats")
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return PatternBeatDropper(bpm.value(options), pattern.value(options))
         }
     }

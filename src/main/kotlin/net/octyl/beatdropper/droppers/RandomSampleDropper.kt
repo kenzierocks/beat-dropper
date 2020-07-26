@@ -29,6 +29,7 @@ import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
 import net.octyl.beatdropper.SampleSelection
+import net.octyl.beatdropper.util.Format
 import java.util.Random
 import java.util.SortedSet
 import java.util.concurrent.ConcurrentHashMap
@@ -51,7 +52,7 @@ class RandomSampleDropper private constructor(
         private val seed: ArgumentAcceptingOptionSpec<String> = SharedOptions.seed(parser)
             .required()
 
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return RandomSampleDropper(
                 sampleSize.value(options),
                 percentage.value(options) / 100.0,

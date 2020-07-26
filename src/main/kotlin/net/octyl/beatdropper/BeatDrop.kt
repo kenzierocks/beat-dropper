@@ -30,20 +30,15 @@ import joptsimple.NonOptionArgumentSpec
 import joptsimple.OptionParser
 import joptsimple.OptionSet
 import joptsimple.OptionSpec
-import net.octyl.beatdropper.droppers.SampleModifier
 import net.octyl.beatdropper.droppers.SampleModifierFactories
 import net.octyl.beatdropper.util.ChannelProvider
 import net.octyl.beatdropper.util.ReadableByteChannelProviderConverter
 import net.octyl.beatdropper.util.WritableByteChannelProviderConverter
+import org.bytedeco.ffmpeg.global.avutil
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.nio.channels.ReadableByteChannel
 import java.nio.channels.WritableByteChannel
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.StandardOpenOption.CREATE
-import java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
-import java.nio.file.StandardOpenOption.WRITE
 import javax.sound.sampled.UnsupportedAudioFileException
 import kotlin.system.exitProcess
 
@@ -68,6 +63,7 @@ object BeatDrop {
         val sourceOpt = addSourceOpt(parser)
         val sinkOpt = addSinkOpt(parser)
         val rawFlagOpt = addRawFlag(parser)
+        val debugFlagOpt = addDebugFlag(parser)
         val options = parser.parse(*args.copyOfRange(1, args.size))
         if (helpOptionPresent(options)) {
             try {
@@ -78,21 +74,12 @@ object BeatDrop {
             return
         }
         val source = sourceOpt.value(options)
-        var sink = sinkOpt.value(options)
+        val sink = sinkOpt.value(options)
         val raw = options.has(rawFlagOpt)
-        val selector = factory.create(options)
-        if (sink == null) {
-            val sourceName = source.identifier
-            val sinkTarget = if (sourceName.startsWith("file:"))
-                renameFile(Paths.get(sourceName.replaceFirst("file:".toRegex(), "")), raw, selector)
-            else
-                Paths.get(renameFile(sourceName.replace('/', '_'), raw, selector))
-            sink = ChannelProvider.forPath(
-                sinkTarget,
-                CREATE, WRITE, TRUNCATE_EXISTING
-            )
+        if (options.has(debugFlagOpt)) {
+            avutil.av_log_set_level(avutil.AV_LOG_DEBUG)
         }
-        executeBeatDropping(source.identifier, SelectionProcessor(source, sink, selector, raw))
+        executeBeatDropping(source.identifier, SelectionProcessor(source, sink, options, factory, raw))
     }
 
     private fun isOldJava(): Boolean {
@@ -135,17 +122,8 @@ object BeatDrop {
         return parser.acceptsAll(listOf("r", "raw"), "Enable raw output")
     }
 
-    private fun renameFile(file: Path, raw: Boolean, modifier: SampleModifier): Path {
-        val newFileName = renameFile(file.fileName.toString(), raw, modifier)
-        return file.resolveSibling(newFileName)
-    }
-
-    private fun renameFile(fileName: String, raw: Boolean, modifier: SampleModifier): String {
-        val ext = when {
-            raw -> "flac"
-            else -> "mp3"
-        }
-        return "${fileName.substringBefore('.')} [${modifier.describeModification()}].$ext"
+    private fun addDebugFlag(parser: OptionParser): OptionSpec<Void> {
+        return parser.acceptsAll(listOf("debug"), "Enable debug output")
     }
 
     private fun printHelp() {

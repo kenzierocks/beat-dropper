@@ -29,6 +29,7 @@ import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
 import net.octyl.beatdropper.util.ArrayUtil
+import net.octyl.beatdropper.util.Format
 
 /**
  * Reverses beats in a pattern.
@@ -39,7 +40,7 @@ class PatternBeatReverser private constructor(private val bpm: Int, private val 
         private val bpm: ArgumentAcceptingOptionSpec<Int> = SharedOptions.bpm(parser)
         private val pattern: ArgumentAcceptingOptionSpec<String> = SharedOptions.pattern(parser, "beats")
 
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return PatternBeatReverser(bpm.value(options), pattern.value(options))
         }
     }

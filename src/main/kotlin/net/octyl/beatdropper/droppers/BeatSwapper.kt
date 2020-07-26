@@ -29,6 +29,7 @@ import com.google.auto.service.AutoService
 import joptsimple.ArgumentAcceptingOptionSpec
 import joptsimple.OptionSet
 import net.octyl.beatdropper.SampleSelection
+import net.octyl.beatdropper.util.Format
 
 /**
  * Swaps beats in a measure.
@@ -45,7 +46,7 @@ class BeatSwapper private constructor(
         private val pattern: ArgumentAcceptingOptionSpec<String> =
             opt("pattern", "Pattern of beats to output, e.g. `1:4:3:2`.")
 
-        override fun create(options: OptionSet): SampleModifier {
+        override fun create(format: Format, options: OptionSet): SampleModifier {
             return BeatSwapper(bpm.value(options), measureSize.value(options), pattern.value(options))
         }
     }

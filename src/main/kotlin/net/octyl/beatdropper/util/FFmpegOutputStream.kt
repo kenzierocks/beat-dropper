@@ -55,7 +55,6 @@ import org.bytedeco.ffmpeg.global.avformat.avformat_write_header
 import org.bytedeco.ffmpeg.global.avutil.AVERROR_EOF
 import org.bytedeco.ffmpeg.global.avutil.AV_CH_LAYOUT_STEREO
 import org.bytedeco.ffmpeg.global.avutil.AV_OPT_SEARCH_CHILDREN
-import org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16
 import org.bytedeco.ffmpeg.global.avutil.FF_QP2LAMBDA
 import org.bytedeco.ffmpeg.global.avutil.av_frame_alloc
 import org.bytedeco.ffmpeg.global.avutil.av_frame_free
@@ -171,22 +170,16 @@ class FFmpegOutputStream(
                 { frame -> av_frame_free(frame) }
             ) ?: error("Unable to allocate output frame")
 
+            val inputFormat = internalFormat(sampleRate)
             outputFrame
-                .channel_layout(AV_CH_LAYOUT_STEREO)
-                .sample_rate(sampleRate)
-                .format(AV_SAMPLE_FMT_S16)
+                .setFrom(inputFormat)
                 .nb_samples(nbSamples)
 
             error = av_frame_get_buffer(outputFrame, 0)
             check(error == 0) { "Unable to get output buffer: " + avErr2Str(error) }
 
             resampler = closer.register(Resampler(
-                Format(
-                    channelLayout = outputFrame.channel_layout(),
-                    sampleFormat = outputFrame.format(),
-                    timeBase = audioStream.time_base(),
-                    sampleRate = outputFrame.sample_rate()
-                ),
+                inputFormat,
                 Format(
                     channelLayout = codecCtx.channel_layout(),
                     sampleFormat = codecCtx.sample_fmt(),
@@ -262,6 +255,11 @@ class FFmpegOutputStream(
         pts += length / (java.lang.Short.BYTES * codecCtx.channels()).toLong()
         for (next in resampler.pushFrame(outputFrame)) {
             flushFrame(next)
+        }
+        if (length < outputBuffer.capacity()) {
+            for (next in resampler.pushFinalFrame(pts)) {
+                flushFrame(next)
+            }
         }
     }
 

@@ -68,7 +68,7 @@ class FlowInputStream(flow: Flow<ByteBuffer>) : InputStream() {
 
     override fun read(): Int {
         val buffer = fillIfNeeded() ?: return -1
-        return buffer.get().toInt()
+        return buffer.get().toInt() and 0xFF
     }
 
     override fun close() {

@@ -39,7 +39,7 @@ abstract class SampleSelector : SampleModifier {
         for (range in ranges) {
             // copy from buffer[lowBound:highBound] to
             // selectedBuffer[index:index+length]
-            System.arraycopy(buffer, range.lowBound, selectedBuffer, index, range.length)
+            buffer.copyInto(selectedBuffer, index, startIndex = range.lowBound, endIndex = range.highBound)
             index += range.length
         }
         return selectedBuffer

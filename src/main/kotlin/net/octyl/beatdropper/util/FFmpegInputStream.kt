@@ -196,7 +196,7 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                     av_packet_unref(packet)
                 }
             }
-            handleResultFrames(resampler.pushFinalFrame(0L))
+            handleResultFrames(resampler.pushFinalFrame(frame.pts()))
         } catch (t: Throwable) {
             closeSilently(t)
             LOGGER.error("FFmpeg input stream crashed!", t)
@@ -230,6 +230,7 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
                 frameSequence.hasNext() -> frameSequence.next()
                 else -> null
             }
+            currentFrame = localFrame
         }
         return localFrame
     }
@@ -237,13 +238,13 @@ class FFmpegInputStream(name: String, ioCallbacks: AvioCallbacks) : InputStream(
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         val buffer = loadCurrentFrame() ?: return -1
         val allowedLen = len.coerceAtMost(buffer.remaining())
-        buffer[b, off, allowedLen]
+        buffer.get(b, off, allowedLen)
         return allowedLen
     }
 
     override fun read(): Int {
         val buffer = loadCurrentFrame() ?: return -1
-        return buffer.get().toInt()
+        return buffer.get().toInt() and 0xFF
     }
 
     @Throws(IOException::class)

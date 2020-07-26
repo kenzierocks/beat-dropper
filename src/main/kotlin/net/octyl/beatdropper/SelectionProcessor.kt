@@ -249,9 +249,9 @@ class SelectionProcessor(
             "channel sizes should be equal, ${left.size} != ${right.size}"
         }
         val buffer = ByteBuffer.allocate((left.size + right.size) * Short.SIZE_BYTES).order(order)
-        for ((l, r) in left.zip(right)) {
-            buffer.putShort(l)
-            buffer.putShort(r)
+        for (i in left.indices) {
+            buffer.putShort(left[i])
+            buffer.putShort(right[i])
         }
         buffer.flip()
         return buffer

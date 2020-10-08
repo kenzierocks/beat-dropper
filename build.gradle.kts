@@ -1,7 +1,7 @@
 import com.techshroom.inciseblue.commonLib
 
 plugins {
-    val kotlinVersion = "1.3.72"
+    val kotlinVersion = "1.4.10"
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
     id("com.techshroom.incise-blue") version "0.5.7"
@@ -38,7 +38,7 @@ dependencies {
     implementation(platform(kotlin("bom")))
     implementation(kotlin("stdlib-jdk8"))
 
-    commonLib("org.jetbrains.kotlinx", "kotlinx-coroutines", "1.3.8") {
+    commonLib("org.jetbrains.kotlinx", "kotlinx-coroutines", "1.3.9") {
         implementation(lib("core"))
         implementation(lib("jdk8"))
     }
@@ -54,11 +54,11 @@ dependencies {
     implementation("com.flowpowered:flow-math:1.0.3")
 
     val javacppPresets = mapOf(
-        "ffmpeg" to "4.2.2",
+        "ffmpeg" to "4.3.1",
         "fftw" to "3.3.8",
         "javacpp" to null
     )
-    val javacppVersion = "1.5.3"
+    val javacppVersion = "1.5.4"
     // take desktop platforms, 64 bit
     val wantedPlatforms = listOf("linux", "macosx", "windows").map { "$it-x86_64" }
     for ((name, version) in javacppPresets) {

@@ -116,7 +116,7 @@ class FFmpegOutputStream(
             val desiredFormat = generateSequence(0L) { it + 1 }
                 .map { supportedFmts[it] }
                 .takeWhile { fmt -> fmt != -1 }
-                .maxBy { fmt ->
+                .maxByOrNull { fmt ->
                     val bytes = av_get_bytes_per_sample(fmt)
                     val planar = when (av_get_planar_sample_fmt(fmt)) {
                         0 -> 0

@@ -51,7 +51,7 @@ object BeatDrop {
             System.err.println("Error: JRE 14 is required")
             exitProcess(1)
         }
-        if (args.size < 2 || args[1] in setOf("-h", "--help")) {
+        if (args.size < 2 || args[0] in setOf("-h", "--help")) {
             // length must be >= 2
             // dropper & file
             printHelp()
